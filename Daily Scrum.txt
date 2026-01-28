@@ -17,10 +17,11 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Created github repos 
+- Initialised frontend and backend
 
 2. To do until next Scrum:
-
+- start working on cart page
 
 3. Need assistance / figure things out
 
@@ -41,10 +42,10 @@ Ali
 Aleks
 
 1. Done / not done since last scrum:
-
+N/A
 
 2. To do until next Scrum:
-
+Start user registration/login (Person1)
 
 3. Need assistance / figure things out
 
