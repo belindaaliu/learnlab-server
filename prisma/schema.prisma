@@ -1,0 +1,409 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+datasource db {
+  provider = "mysql"
+  url = env("DATABASE_URL")
+}
+
+model AssessmentOptions {
+  id                  BigInt              @id @default(autoincrement())
+  question_id         BigInt
+  option_text         String?             @db.VarChar(255)
+  is_correct          Boolean?            @default(false)
+  AssessmentQuestions AssessmentQuestions @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_option_question")
+  UserAnswers         UserAnswers[]
+
+  @@index([question_id], map: "fk_option_question")
+}
+
+model AssessmentQuestions {
+  id                BigInt                            @id @default(autoincrement())
+  assessment_id     BigInt
+  question_text     String                            @db.Text
+  question_type     AssessmentQuestions_question_type
+  AssessmentOptions AssessmentOptions[]
+  Assessments       Assessments                       @relation(fields: [assessment_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_question_assessment")
+  UserAnswers       UserAnswers[]
+
+  @@index([assessment_id], map: "fk_question_assessment")
+}
+
+model Assessments {
+  id                  BigInt                @id @default(autoincrement())
+  content_id          BigInt
+  title               String?               @db.VarChar(255)
+  instructions        String?               @db.Text
+  AssessmentQuestions AssessmentQuestions[]
+  CourseContent       CourseContent         @relation(fields: [content_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_assessment_content")
+  QuizAttempts        QuizAttempts[]
+
+  @@index([content_id], map: "fk_assessment_content")
+}
+
+model Categories {
+  id      BigInt    @id @default(autoincrement())
+  name    String    @db.VarChar(255)
+  Courses Courses[]
+}
+
+model Certificates {
+  id              BigInt    @id @default(autoincrement())
+  user_id         BigInt
+  course_id       BigInt
+  certificate_url String?   @db.VarChar(500)
+  issued_at       DateTime? @default(now()) @db.Timestamp(0)
+  Courses         Courses   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_certificate_course")
+  Users           Users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_certificate_user")
+
+  @@index([course_id], map: "fk_certificate_course")
+  @@index([user_id], map: "fk_certificate_user")
+}
+
+model CourseContent {
+  id                  BigInt             @id @default(autoincrement())
+  course_id           BigInt
+  parent_id           BigInt?
+  title               String             @db.VarChar(255)
+  type                CourseContent_type
+  video_url           String?            @db.VarChar(500)
+  note_content        String?            @db.Text
+  duration_seconds    Int?
+  order_index         Int
+  Assessments         Assessments[]
+  Courses             Courses            @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_course")
+  CourseContent       CourseContent?     @relation("CourseContentToCourseContent", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_parent")
+  other_CourseContent CourseContent[]    @relation("CourseContentToCourseContent")
+  LessonProgress      LessonProgress[]
+
+  @@index([course_id], map: "fk_content_course")
+  @@index([parent_id], map: "fk_content_parent")
+}
+
+model CourseTags {
+  id        BigInt              @id @default(autoincrement())
+  course_id BigInt
+  tag_name  String              @db.VarChar(255)
+  tag_type  CourseTags_tag_type
+  Courses   Courses             @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_coursetags_course")
+
+  @@index([course_id], map: "fk_coursetags_course")
+}
+
+model Courses {
+  id                BigInt             @id @default(autoincrement())
+  instructor_id     BigInt
+  title             String             @db.VarChar(255)
+  subtitle          String?            @db.VarChar(255)
+  description       String?            @db.Text
+  category_id       BigInt
+  price             Decimal?           @db.Decimal(10, 2)
+  thumbnail_url     String?            @db.VarChar(500)
+  level             Courses_level      @default(beginner)
+  views             Int?               @default(0)
+  enrollments_count Int?               @default(0)
+  created_at        DateTime?          @default(now()) @db.Timestamp(0)
+  updated_at        DateTime?          @default(now()) @db.Timestamp(0)
+  Certificates      Certificates[]
+  CourseContent     CourseContent[]
+  CourseTags        CourseTags[]
+  Categories        Categories         @relation(fields: [category_id], references: [id], onUpdate: NoAction, map: "fk_course_category")
+  Users             Users              @relation(fields: [instructor_id], references: [id], onUpdate: NoAction, map: "fk_course_instructor")
+  Enrollments       Enrollments[]
+  Payments          Payments[]
+  Reviews           Reviews[]
+  ShoppingCart      ShoppingCart[]
+  UserSavedCourses  UserSavedCourses[]
+
+  @@index([category_id], map: "fk_course_category")
+  @@index([instructor_id], map: "fk_course_instructor")
+}
+
+model Enrollments {
+  id          BigInt    @id @default(autoincrement())
+  user_id     BigInt
+  course_id   BigInt
+  enrolled_at DateTime? @default(now()) @db.Timestamp(0)
+  Courses     Courses   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_enrollment_course")
+  Users       Users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_enrollment_user")
+
+  @@index([course_id], map: "fk_enrollment_course")
+  @@index([user_id], map: "fk_enrollment_user")
+}
+
+model LessonProgress {
+  id            BigInt        @id @default(autoincrement())
+  user_id       BigInt
+  content_id    BigInt
+  is_completed  Boolean?      @default(false)
+  completed_at  DateTime?     @db.Timestamp(0)
+  CourseContent CourseContent @relation(fields: [content_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_progress_content")
+  Users         Users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_progress_user")
+
+  @@index([content_id], map: "fk_progress_content")
+  @@index([user_id], map: "fk_progress_user")
+}
+
+model Messages {
+  id                                BigInt    @id @default(autoincrement())
+  sender_id                         BigInt
+  receiver_id                       BigInt
+  content                           String    @db.Text
+  created_at                        DateTime? @default(now()) @db.Timestamp(0)
+  Users_Messages_receiver_idToUsers Users     @relation("Messages_receiver_idToUsers", fields: [receiver_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_message_receiver")
+  Users_Messages_sender_idToUsers   Users     @relation("Messages_sender_idToUsers", fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_message_sender")
+
+  @@index([receiver_id], map: "fk_message_receiver")
+  @@index([sender_id], map: "fk_message_sender")
+}
+
+model MultiFactorAuth {
+  id         BigInt                   @id @default(autoincrement())
+  user_id    BigInt
+  mfa_type   MultiFactorAuth_mfa_type
+  secret_key String?                  @db.VarChar(255)
+  is_enabled Boolean?                 @default(false)
+  created_at DateTime?                @default(now()) @db.Timestamp(0)
+  Users      Users                    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_mfa_user")
+
+  @@index([user_id], map: "fk_mfa_user")
+}
+
+model Notifications {
+  id         BigInt              @id @default(autoincrement())
+  user_id    BigInt
+  message    String              @db.Text
+  type       Notifications_type?
+  is_read    Boolean?            @default(false)
+  created_at DateTime?           @default(now()) @db.Timestamp(0)
+  Users      Users               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_user")
+
+  @@index([user_id], map: "fk_notification_user")
+}
+
+model Payments {
+  id                   BigInt             @id @default(autoincrement())
+  user_id              BigInt
+  course_id            BigInt?
+  subscription_plan_id BigInt?
+  amount               Decimal            @db.Decimal(10, 2)
+  currency             String             @db.VarChar(10)
+  method               Payments_method
+  status               Payments_status
+  transaction_id       String?            @db.VarChar(255)
+  created_at           DateTime?          @default(now()) @db.Timestamp(0)
+  updated_at           DateTime?          @default(now()) @db.Timestamp(0)
+  Courses              Courses?           @relation(fields: [course_id], references: [id], onUpdate: NoAction, map: "fk_payment_course")
+  SubscriptionPlans    SubscriptionPlans? @relation(fields: [subscription_plan_id], references: [id], onUpdate: NoAction, map: "fk_payment_plan")
+  Users                Users              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_payment_user")
+
+  @@index([course_id], map: "fk_payment_course")
+  @@index([subscription_plan_id], map: "fk_payment_plan")
+  @@index([user_id], map: "fk_payment_user")
+}
+
+model QuizAttempts {
+  id            BigInt        @id @default(autoincrement())
+  user_id       BigInt
+  assessment_id BigInt
+  score         Int?
+  started_at    DateTime?     @default(now()) @db.Timestamp(0)
+  completed_at  DateTime?     @db.Timestamp(0)
+  Assessments   Assessments   @relation(fields: [assessment_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_attempt_assessment")
+  Users         Users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_attempt_user")
+  UserAnswers   UserAnswers[]
+
+  @@index([assessment_id], map: "fk_attempt_assessment")
+  @@index([user_id], map: "fk_attempt_user")
+}
+
+model Reviews {
+  id                                 BigInt    @id @default(autoincrement())
+  user_id                            BigInt
+  course_id                          BigInt?
+  instructor_id                      BigInt?
+  rating                             Int
+  review_text                        String?   @db.Text
+  created_at                         DateTime? @default(now()) @db.Timestamp(0)
+  Courses                            Courses?  @relation(fields: [course_id], references: [id], onUpdate: NoAction, map: "fk_review_course")
+  Users_Reviews_instructor_idToUsers Users?    @relation("Reviews_instructor_idToUsers", fields: [instructor_id], references: [id], onUpdate: NoAction, map: "fk_review_instructor")
+  Users_Reviews_user_idToUsers       Users     @relation("Reviews_user_idToUsers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_review_user")
+
+  @@index([course_id], map: "fk_review_course")
+  @@index([instructor_id], map: "fk_review_instructor")
+  @@index([user_id], map: "fk_review_user")
+}
+
+model ShoppingCart {
+  id        BigInt    @id @default(autoincrement())
+  user_id   BigInt
+  course_id BigInt
+  added_at  DateTime? @default(now()) @db.Timestamp(0)
+  Courses   Courses   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cart_course")
+  Users     Users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cart_user")
+
+  @@index([course_id], map: "fk_cart_course")
+  @@index([user_id], map: "fk_cart_user")
+}
+
+model SubscriptionPlans {
+  id            BigInt          @id @default(autoincrement())
+  name          String          @db.VarChar(255)
+  price         Decimal         @db.Decimal(10, 2)
+  duration_days Int
+  description   String?         @db.Text
+  Payments      Payments[]
+  Subscriptions Subscriptions[]
+}
+
+model Subscriptions {
+  id                BigInt               @id @default(autoincrement())
+  user_id           BigInt
+  plan_id           BigInt
+  status            Subscriptions_status
+  start_date        DateTime             @db.Date
+  end_date          DateTime             @db.Date
+  SubscriptionPlans SubscriptionPlans    @relation(fields: [plan_id], references: [id], onUpdate: NoAction, map: "fk_sub_plan")
+  Users             Users                @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sub_user")
+
+  @@index([plan_id], map: "fk_sub_plan")
+  @@index([user_id], map: "fk_sub_user")
+}
+
+model UserAnswers {
+  id                  BigInt              @id @default(autoincrement())
+  attempt_id          BigInt
+  question_id         BigInt
+  selected_option_id  BigInt?
+  answer_text         String?             @db.Text
+  QuizAttempts        QuizAttempts        @relation(fields: [attempt_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_answer_attempt")
+  AssessmentOptions   AssessmentOptions?  @relation(fields: [selected_option_id], references: [id], onUpdate: NoAction, map: "fk_answer_option")
+  AssessmentQuestions AssessmentQuestions @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_answer_question")
+
+  @@index([attempt_id], map: "fk_answer_attempt")
+  @@index([selected_option_id], map: "fk_answer_option")
+  @@index([question_id], map: "fk_answer_question")
+}
+
+model UserSavedCourses {
+  id        BigInt  @id @default(autoincrement())
+  user_id   BigInt
+  course_id BigInt
+  Courses   Courses @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_saved_course")
+  Users     Users   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_saved_user")
+
+  @@index([course_id], map: "fk_saved_course")
+  @@index([user_id], map: "fk_saved_user")
+}
+
+model Users {
+  id                                   BigInt                              @id @default(autoincrement())
+  email                                String                              @unique(map: "email") @db.VarChar(255)
+  password_hash                        String                              @db.VarChar(255)
+  role                                 Users_role                          @default(student)
+  first_name                           String?                             @db.VarChar(100)
+  last_name                            String?                             @db.VarChar(100)
+  headline                             String?                             @db.VarChar(255)
+  biography                            String?                             @db.Text
+  photo_url                            String?                             @db.VarChar(500)
+  field_of_learning                    String?                             @db.VarChar(255)
+  occupation                           String?                             @db.VarChar(255)
+  skills                               Json?
+  interests                            Json?
+  resume_url                           String?                             @db.VarChar(500)
+  instructor_application_status        Users_instructor_application_status @default(none)
+  instructor_application_submitted_at  DateTime?                           @db.Timestamp(0)
+  instructor_reviewed_at               DateTime?                           @db.Timestamp(0)
+  instructor_admin_comment             String?                             @db.Text
+  created_at                           DateTime?                           @default(now()) @db.Timestamp(0)
+  updated_at                           DateTime?                           @default(now()) @db.Timestamp(0)
+  Certificates                         Certificates[]
+  Courses                              Courses[]
+  Enrollments                          Enrollments[]
+  LessonProgress                       LessonProgress[]
+  Messages_Messages_receiver_idToUsers Messages[]                          @relation("Messages_receiver_idToUsers")
+  Messages_Messages_sender_idToUsers   Messages[]                          @relation("Messages_sender_idToUsers")
+  MultiFactorAuth                      MultiFactorAuth[]
+  Notifications                        Notifications[]
+  Payments                             Payments[]
+  QuizAttempts                         QuizAttempts[]
+  Reviews_Reviews_instructor_idToUsers Reviews[]                           @relation("Reviews_instructor_idToUsers")
+  Reviews_Reviews_user_idToUsers       Reviews[]                           @relation("Reviews_user_idToUsers")
+  ShoppingCart                         ShoppingCart[]
+  Subscriptions                        Subscriptions[]
+  UserSavedCourses                     UserSavedCourses[]
+}
+
+enum MultiFactorAuth_mfa_type {
+  email
+  sms
+  authenticator
+}
+
+enum AssessmentQuestions_question_type {
+  mcq
+  truefalse
+  text
+}
+
+enum CourseTags_tag_type {
+  topic
+  keyword
+}
+
+enum Notifications_type {
+  course_enrollment
+  new_message
+  new_review
+  certificate_issued
+  course_update
+  announcement
+  quiz_graded
+  subscription_expiring
+}
+
+enum Subscriptions_status {
+  active
+  canceled
+  expired
+}
+
+enum Users_role {
+  student
+  instructor
+  admin
+}
+
+enum CourseContent_type {
+  section
+  video
+  note
+  assessment
+}
+
+enum Payments_method {
+  stripe
+  paypal
+}
+
+enum Payments_status {
+  paid
+  failed
+  refunded
+}
+
+enum Courses_level {
+  beginner
+  intermediate
+  advanced
+  all_levels
+}
+
+enum Users_instructor_application_status {
+  none
+  pending
+  approved
+  rejected
+}
