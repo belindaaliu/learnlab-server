@@ -1,3 +1,4 @@
+import studentRoutes from "./src/routes/studentRoutes.js";
 const express = require('express');
 const cors = require('cors');
 
@@ -8,5 +9,9 @@ app.use(express.json());
 app.get('/', (req, res) => {
   res.send('LMS API running');
 });
+
+
+app.use("/api/student", studentRoutes);
+
 
 module.exports = app;
