@@ -1,8 +1,8 @@
-const studentRoutes = require("./routes/studentRoutes"); 
+// const studentRoutes = require("./routes/studentRoutes"); 
 const express = require('express');
 const cors = require('cors');
 const courseRoutes = require('./routes/courses.routes');
-const authRoutes = require('./routes/auth.routes');
+const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 
@@ -19,6 +19,6 @@ app.get('/api', (req, res) => {
   res.json({ message: "Welcome to LearnLab API" });
 });
 
-app.use("/api/student", studentRoutes);
+// app.use("/api/student", studentRoutes);
 
 module.exports = app;
