@@ -59,10 +59,11 @@ Start user registration/login (Person1)
 Samira
 
 1. Done / not done since last scrum:
-
+- Student dashboard created in Frontend and backend.
 
 2. To do until next Scrum:
-
+- Finalizing student dashboard.
+- My learning page including All courses , Wishlist 
 
 
 3. Need assistance / figure things out
