@@ -1,21 +1,27 @@
-import studentRoutes from "./src/routes/studentRoutes.js";
-const cartRoutes = require('./routes/cartRoutes');
+const studentRoutes = require("./routes/studentRoutes"); 
 const express = require('express');
 const cors = require('cors');
+const courseRoutes = require('./routes/courses.routes');
+const authRoutes = require('./routes/auth.routes');
+const cartRoutes = require('./routes/cartRoutes');
 
 const app = express();
-app.use(cors());
+
+// --- Middlewares ---
+app.use(cors()); 
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('LMS API running');
-});
+// --- Routes ---
+app.use('/api/courses', courseRoutes); 
 
+app.use('/api/auth', authRoutes);
 
-app.use("/api/student", studentRoutes);
 app.use('/cart', cartRoutes)
 
+app.get('/api', (req, res) => {
+  res.json({ message: "Welcome to LearnLab API" });
+});
+
+app.use("/api/student", studentRoutes);
 
 module.exports = app;
-
-

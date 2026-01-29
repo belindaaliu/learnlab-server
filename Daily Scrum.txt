@@ -30,13 +30,16 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Reviewed the initial frontend repository structure.
+- Planned the architecture refactor and folder restructuring.
+- Researched Vite migration requirements.
 
 2. To do until next Scrum:
-
+- Migrate client from CRA to Vite.
+- Implement the new folder structure and Base UI components.
 
 3. Need assistance / figure things out
-
+- N/A
 
 ---
 Aleks
@@ -82,22 +85,30 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Major Refactor: Migrated frontend to Vite + Tailwind CSS v3.4
+- Established the new project architecture (Layouts, Pages, Router).
+- Created the UI Kit (Button, Input) and defined the "Royal Tech" design system.
+- Completed the Home Page implementation.
 
 2. To do until next Scrum:
-
+-Start working on the Browse Courses page (/courses).
+- Implement course list layout and filtering UI.
 
 3. Need assistance / figure things out
-
+- N/A
 
 ---
 Aleks
 
 1. Done / not done since last scrum:
+Finished Auth Controller
+Started auth Routes
 
 
 2. To do until next Scrum:
-
+Finish Auth routes.
+Work on JWT
+Implement middleware to protect routes
 
 3. Need assistance / figure things out
 
