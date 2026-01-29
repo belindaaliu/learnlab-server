@@ -73,10 +73,10 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+Started working on cart page
 
 2. To do until next Scrum:
-
+Continue working on backend for cart page
 
 3. Need assistance / figure things out
 
@@ -101,14 +101,12 @@ Ali
 Aleks
 
 1. Done / not done since last scrum:
-Finished Auth Controller
-Started auth Routes
-
+Started Person1
 
 2. To do until next Scrum:
-Finish Auth routes.
-Work on JWT
-Implement middleware to protect routes
+Add user Routes
+Add user Controller
+Add auth middleware
 
 3. Need assistance / figure things out
 
@@ -119,10 +117,11 @@ Implement middleware to protect routes
 Samira
 
 1. Done / not done since last scrum:
-
+- Student dashboard created in Frontend and backend.
 
 2. To do until next Scrum:
-
+- Finalizing student dashboard.
+- My learning page including All courses , Wishlist
 
 
 3. Need assistance / figure things out
@@ -132,10 +131,11 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+Completed Backend for Cart Page
 
 2. To do until next Scrum:
-
+Create Front end for cart page
+Connect BE to FE (cart)
 
 3. Need assistance / figure things out
 
@@ -144,10 +144,14 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+-Start working on the Browse Courses page (/courses).
+- Implement course list layout and filtering UI.
+- Developed Backend API for Courses (Controller & Routes) and Database Seeding.
+- Created browse-courses branch and started frontend integration
 
 2. To do until next Scrum:
-
+- Connect the Frontend Course List to the new Backend API.
+- Implement UI for course filtering and search.
 
 3. Need assistance / figure things out
 
@@ -156,9 +160,14 @@ Ali
 Aleks
 
 1. Done / not done since last scrum:
-
+Added user Routes
+Added user Controller
+Added auth middleware
+Add JWT Auth
 
 2. To do until next Scrum:
+Create Login/registration page
+Connect FE to BE
 
 
 3. Need assistance / figure things out
