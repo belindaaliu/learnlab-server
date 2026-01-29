@@ -60,6 +60,7 @@ model Certificates {
 
   @@index([course_id], map: "fk_certificate_course")
   @@index([user_id], map: "fk_certificate_user")
+  @@unique([user_id, course_id], name: "unique_user_course_certificate")
 }
 
 model CourseContent {

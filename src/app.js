@@ -1,4 +1,5 @@
 import studentRoutes from "./src/routes/studentRoutes.js";
+const cartRoutes = require('./routes/cartRoutes');
 const express = require('express');
 const cors = require('cors');
 
@@ -12,6 +13,9 @@ app.get('/', (req, res) => {
 
 
 app.use("/api/student", studentRoutes);
+app.use('/cart', cartRoutes)
 
 
 module.exports = app;
+
+
