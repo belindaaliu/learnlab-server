@@ -1,6 +1,6 @@
-import prisma from "../lib/prisma.js";
+const prisma = require("../../lib/prisma");
 
-export const getCurrentUser = async (req, res) => {
+const getCurrentUser = async (req, res) => {
   try {
     const userId = Number(req.params.id);
 
@@ -24,4 +24,8 @@ export const getCurrentUser = async (req, res) => {
     console.error("Error fetching user:", error);
     res.status(500).json({ message: "Server error" });
   }
+};
+
+module.exports = {
+  getCurrentUser
 };
