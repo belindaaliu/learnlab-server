@@ -1,9 +1,9 @@
-import express from "express";
-import { 
+const express = require("express");
+const {
   getCurrentUser,
-  getPurchasedCourses, 
-  getWishlistCourses 
-} from "../controllers/Student/studentController.js";
+  getPurchasedCourses,
+  getWishlistCourses
+} = require("../controllers/Student/studentController");
 
 const router = express.Router();
 
@@ -16,4 +16,4 @@ router.get("/:id/courses", getPurchasedCourses);
 // Wishlist courses
 router.get("/:id/wishlist", getWishlistCourses);
 
-export default router;
+module.exports = router;

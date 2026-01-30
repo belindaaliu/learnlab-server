@@ -1,6 +1,7 @@
-import prisma from "../../lib/prisma.js";
+const prisma = require("../../lib/prisma");
 
-export const getCurrentUser = async (req, res) => {
+// ---------------- GET CURRENT USER ----------------
+const getCurrentUser = async (req, res) => {
   try {
     const userId = Number(req.params.id);
 
@@ -28,7 +29,7 @@ export const getCurrentUser = async (req, res) => {
 
 
 // ---------------- GET PURCHASED COURSES ----------------
-export const getPurchasedCourses = async (req, res) => {
+const getPurchasedCourses = async (req, res) => {
   try {
     const userId = Number(req.params.id);
 
@@ -51,7 +52,7 @@ export const getPurchasedCourses = async (req, res) => {
 
 
 // ---------------- GET WISHLIST COURSES ----------------
-export const getWishlistCourses = async (req, res) => {
+const getWishlistCourses = async (req, res) => {
   try {
     const userId = Number(req.params.id);
 
@@ -70,4 +71,12 @@ export const getWishlistCourses = async (req, res) => {
     console.error("Error fetching wishlist courses:", error);
     res.status(500).json({ message: "Server error" });
   }
+};
+
+
+// ---------------- EXPORT ALL CONTROLLERS ----------------
+module.exports = {
+  getCurrentUser,
+  getPurchasedCourses,
+  getWishlistCourses
 };
