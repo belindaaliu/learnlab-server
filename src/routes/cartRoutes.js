@@ -24,14 +24,6 @@ router.post(
   cartController.addToCart,
 );
 
-// UPDATE quantity
-router.put(
-  "/:id",
-  authMiddleware,
-  ...updateQuantityValidator,
-  cartController.updateQuantity,
-);
-
 // REMOVE from cart
 router.delete(
   "/:id",
