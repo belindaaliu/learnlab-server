@@ -1,6 +1,5 @@
-import prisma from "../lib/prisma.js";
+import prisma from "../../lib/prisma.js";
 
-// ---------------- GET CURRENT USER ----------------
 export const getCurrentUser = async (req, res) => {
   try {
     const userId = Number(req.params.id);

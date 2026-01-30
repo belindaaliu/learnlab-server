@@ -1,8 +1,13 @@
 import express from "express";
-import { getPurchasedCourses, getWishlistCourses,getWishlistCourses } from "../controllers/studentController.js";
+import { 
+  getCurrentUser,
+  getPurchasedCourses, 
+  getWishlistCourses 
+} from "../controllers/Student/studentController.js";
 
 const router = express.Router();
 
+// Current user
 router.get("/me/:id", getCurrentUser);
 
 // Purchased courses
@@ -12,4 +17,3 @@ router.get("/:id/courses", getPurchasedCourses);
 router.get("/:id/wishlist", getWishlistCourses);
 
 export default router;
-
