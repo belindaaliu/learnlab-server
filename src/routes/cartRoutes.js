@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const cartController = require("../controllers/cartController");
-const { authMiddleware } = require('../middlewares/authMiddleware')
+const { authMiddleware } = require('../middleware/authMiddleware')
 const {
   addToCartValidator,
   removeFromCartValidator,
@@ -27,7 +27,7 @@ router.post(
 // UPDATE quantity
 router.put(
   "/:id",
-  // authMiddleware,
+  authMiddleware,
   ...updateQuantityValidator,
   cartController.updateQuantity,
 );

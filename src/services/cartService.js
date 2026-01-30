@@ -1,9 +1,5 @@
 const prisma = require("../lib/prisma");
 
-/**
- * Get all cart items for a user
- * @param {number} userId
- */
 async function getCart(userId) {
   const items = await prisma.ShoppingCart.findMany({
     where: { user_id: BigInt(userId) },
@@ -13,48 +9,39 @@ async function getCart(userId) {
           id: true,
           title: true,
           price: true,
+          thumbnail_url: true,
+          instructor_id: true, 
         },
       },
     },
-    orderBy: {
-      added_at: "desc",
-    },
+    orderBy: { added_at: "desc" },
   });
 
   let total = 0;
-  let itemCount = 0;
-
   const cartItems = items.map((item) => {
     const price = Number(item.Courses.price);
-    const quantity = item.quantity;
-    const subtotal = price * quantity;
-
-    total += subtotal;
-    itemCount += quantity;
+    total += price;
 
     return {
       id: item.id.toString(),
-      quantity,
       price,
-      subtotal,
-      course: item.Courses,
+      course: {
+        ...item.Courses,
+        id: item.Courses.id.toString(),
+        image: item.Courses.thumbnail_url 
+      }
     };
   });
 
   return {
     items: cartItems,
-    total,
-    itemCount,
+    total: Number(total.toFixed(2)),
+    itemCount: cartItems.length
   };
 }
 
-/**
- * Add a course to cart
- * @param {number} userId
- * @param {number} courseId
- */
+
 async function addToCart(userId, courseId) {
-  // Check if the course belongs to the user
   const course = await prisma.Courses.findUnique({
     where: { id: BigInt(courseId) },
     select: { instructor_id: true },
@@ -82,17 +69,12 @@ async function addToCart(userId, courseId) {
     data: {
       user_id: BigInt(userId),
       course_id: BigInt(courseId),
-      quantity: 1, // default quantity
+      quantity: 1, 
     },
   })
 }
 
 
-/**
- * Remove a course from cart
- * @param {number} cartItemId
- * @param {number} userId
- */
 async function removeFromCart(cartItemId, userId) {
   return prisma.ShoppingCart.deleteMany({
     where: {
@@ -103,7 +85,6 @@ async function removeFromCart(cartItemId, userId) {
 }
 
 async function updateQuantity(cartItemId, userId, quantity) {
-  // If quantity is 0 → remove item
   if (quantity === 0) {
     return prisma.ShoppingCart.deleteMany({
       where: {
@@ -113,7 +94,6 @@ async function updateQuantity(cartItemId, userId, quantity) {
     });
   }
 
-  // Otherwise update quantity
   const existing = await prisma.ShoppingCart.findFirst({
     where: {
       id: BigInt(cartItemId),
