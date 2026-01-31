@@ -131,11 +131,16 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-Completed Backend for Cart Page
+- Create OrderController- Done
+- Create Order routes - Done
+- Create checkout page - Done
+- Link cart page to checkout page - Done
 
 2. To do until next Scrum:
-Create Front end for cart page
-Connect BE to FE (cart)
+- Create subscription controller to fetch plans, subscription status and history- Todo
+- Create subscription routes- Todo
+- Create pages for subscription overview, history and plans in frontend- Todo
+- Connect frontend to backend- Todo
 
 3. Need assistance / figure things out
 
