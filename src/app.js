@@ -5,6 +5,7 @@ const courseRoutes = require('./routes/courses.routes');
 const authRoutes = require('./routes/authRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 
 const app = express();
 
@@ -20,6 +21,8 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/auth', authRoutes);
 
 app.use('/api/cart', cartRoutes)
+app.use('/api/order', orderRoutes)
+app.use('/api/subscription', subscriptionRoutes)
 
 app.get('/api', (req, res) => {
   res.json({ message: "Welcome to LearnLab API" });
