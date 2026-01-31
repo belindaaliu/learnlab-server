@@ -179,10 +179,13 @@ Connect FE to BE
 Samira
 
 1. Done / not done since last scrum:
-
+Fixed errors on the Student Dashboard
+Created the MyLearning feature
+Removed the mock data previously in use
+(Not pushed, still needs some tweaks)
 
 2. To do until next Scrum:
-
+Working on profile/edit profile/Quiz page.
 
 
 3. Need assistance / figure things out
@@ -192,10 +195,12 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+Created Front end for cart page
+Connected Backend to frontend (cart)
+Created frontend and backend logic for checkout
 
 2. To do until next Scrum:
-
+Work on subscription page
 
 3. Need assistance / figure things out
 
@@ -204,10 +209,11 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Connect the Frontend Course List to the new Backend API.
+- Implement UI for course filtering and search.
 
 2. To do until next Scrum:
-
+Work on Instructor logic and dashboard
 
 3. Need assistance / figure things out
 
@@ -216,13 +222,16 @@ Ali
 Aleks
 
 1. Done / not done since last scrum:
-
+Created Login Page
+Created Registration Page
+Session management on login/logout
 
 2. To do until next Scrum:
-
+Start working on Recover Password
+Add Confirm password to register page
 
 3. Need assistance / figure things out
-
+N/A
 
 ******************************************************
 2026/01/31
