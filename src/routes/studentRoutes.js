@@ -1,4 +1,6 @@
 const express = require("express");
+const certController = require('../controllers/certificateController');
+const { authMiddleware } = require('../middleware/authMiddleware');
 const {
   getCurrentUser,
   getPurchasedCourses,
@@ -15,5 +17,9 @@ router.get("/:id/courses", getPurchasedCourses);
 
 // Wishlist courses
 router.get("/:id/wishlist", getWishlistCourses);
+
+// Certificates
+router.get('/certificates', authMiddleware, certController.getStudentCertificates);
+router.get('/certificates/:courseId/download', authMiddleware, certController.downloadCertificate);
 
 module.exports = router;

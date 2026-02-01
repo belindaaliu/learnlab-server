@@ -6,6 +6,7 @@ const authRoutes = require('./routes/authRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const publicRoutes = require('./routes/publicRoutes');
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use(express.json());
 
 // --- Routes ---
 app.use('/api/courses', courseRoutes); 
+app.use('/api/public', publicRoutes);
 
 app.use('/api/auth', authRoutes);
 
