@@ -12,7 +12,9 @@ const app = express();
 // --- Middlewares ---
 app.use(cors()); 
 
-app.use('/api/orders/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/order/webhook', express.raw({ type: 'application/json' }));
+
+
 app.use(express.json());
 
 // --- Routes ---

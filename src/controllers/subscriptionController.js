@@ -64,11 +64,11 @@ const subscriptionController = {
     try {
       const userId = BigInt(req.user.userId);
       const payments = await prisma.payments.findMany({
-        where: {
-          user_id: userId,
-          subscription_plan_id: { not: null },
+        where: { user_id: userId },
+        include: {
+          SubscriptionPlans: true,
+          Courses: true, 
         },
-        include: { SubscriptionPlans: true },
         orderBy: { created_at: "desc" },
       });
 
@@ -77,7 +77,10 @@ const subscriptionController = {
         amount: Number(p.amount),
         status: p.status,
         date: p.created_at,
-        planName: p.SubscriptionPlans?.name || "Plan",
+
+        description:
+          p.SubscriptionPlans?.name || p.Courses?.title || "Course Purchase",
+        type: p.subscription_plan_id ? "Subscription" : "Course",
       }));
 
       res.json({ success: true, data: formattedHistory });
@@ -102,7 +105,6 @@ const subscriptionController = {
 
       // Create the subscription and payment in a transaction
       const result = await prisma.$transaction(async (tx) => {
-
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + plan.duration_days);
 
@@ -121,8 +123,10 @@ const subscriptionController = {
             user_id: userId,
             subscription_plan_id: BigInt(planId),
             amount: plan.price,
-            status: "completed", 
-            payment_method: "credit_card",
+            currency: "CAD",
+            method: "stripe",
+            status: "paid",
+            transaction_id: `sub_${Date.now()}`,
           },
         });
 
