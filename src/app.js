@@ -8,12 +8,15 @@ const orderRoutes = require('./routes/orderRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 
+
 const app = express();
 
 // --- Middlewares ---
+const seoMiddleware = require('./middleware/seoMiddleware');
 app.use(cors()); 
 
 app.use('/api/order/webhook', express.raw({ type: 'application/json' }));
+app.use(seoMiddleware);
 
 
 app.use(express.json());
