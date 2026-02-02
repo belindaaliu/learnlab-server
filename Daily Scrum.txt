@@ -205,7 +205,7 @@ Connected Backend to frontend (cart)
 Created frontend and backend logic for checkout
 
 2. To do until next Scrum:
-Work on subscription page
+- Work on subscription page
 
 3. Need assistance / figure things out
 
@@ -359,10 +359,13 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+Completed logic for plan subscription.
+Secured stripe credentials and completed stripe payment integration.
+Created logic for certificate generation for course completion, verification 
+and implemented QR codes and Sharable links.
 
 2. To do until next Scrum:
-
+Create initial structure for the admin panel.
 
 3. Need assistance / figure things out
 
