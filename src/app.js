@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const adminRoutes = require('./routes/adminRoutes');
 const studentRoutes = require("./routes/studentRoutes"); 
 const courseRoutes = require('./routes/courses.routes');
 const authRoutes = require('./routes/authRoutes');
@@ -36,5 +37,6 @@ app.get('/api', (req, res) => {
 });
 
 app.use("/api/student", studentRoutes);
+app.use('/api/admin', adminRoutes);
 
 module.exports = app;
