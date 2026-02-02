@@ -1,4 +1,3 @@
-// Import the Prisma instance
 const prisma = require('../lib/prisma');
 
 // ==========================================
@@ -53,7 +52,6 @@ exports.getAllCourses = async (req, res) => {
       id: course.id, 
       title: course.title,
       price: course.price,
-
       image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80", 
       category: course.Categories ? course.Categories.name : 'Uncategorized',
       instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : 'Unknown Instructor',
@@ -79,7 +77,6 @@ exports.getCourseById = async (req, res) => {
     
     console.log("🔍 Request for Course ID:", id); 
 
-
     const course = await prisma.courses.findUnique({
       where: { id: id }, 
       include: {
@@ -98,7 +95,6 @@ exports.getCourseById = async (req, res) => {
       return res.status(404).json({ message: "Course not found" });
     }
 
-
     if (!course.thumbnail_url) {
         course.thumbnail_url = "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80";
     }
@@ -109,5 +105,66 @@ exports.getCourseById = async (req, res) => {
   } catch (error) {
     console.error("🔥 Server Error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ==========================================
+// 3. GET INSTRUCTOR COURSES (Protected)
+// ==========================================
+exports.getInstructorCourses = async (req, res) => {
+  try {
+    const instructorId = req.user.userId;
+
+    const courses = await prisma.courses.findMany({
+      where: {
+        instructor_id: instructorId
+      },
+      orderBy: {
+        created_at: 'desc'
+      },
+      include: {
+        Categories: true,
+        // We will add the number of students or statistics later.
+      }
+    });
+
+    res.json(courses);
+  } catch (error) {
+    console.error("Error fetching instructor courses:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// ==========================================
+// 4. CREATE NEW COURSE
+// ==========================================
+exports.createCourse = async (req, res) => {
+  try {
+    const { title, description, price, category_id, level, thumbnail_url } = req.body;
+    
+    const instructor_id = req.user.userId;
+
+    if (!title || !price || !category_id) {
+      return res.status(400).json({ message: "Please fill in all required fields." });
+    }
+
+    const newCourse = await prisma.courses.create({
+      data: {
+        title,
+        description,
+        price: parseFloat(price),
+        category_id: parseInt(category_id),
+        level: level || 'beginner',
+        thumbnail_url: thumbnail_url || '',
+        instructor_id: instructor_id,
+        views: 0
+      }
+    });
+
+    res.status(201).json(newCourse);
+
+  } catch (error) {
+    console.error("Error creating course:", error);
+    res.status(500).json({ message: "Server Error creating course" });
   }
 };
