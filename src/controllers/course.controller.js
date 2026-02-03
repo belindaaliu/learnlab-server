@@ -168,3 +168,98 @@ exports.createCourse = async (req, res) => {
     res.status(500).json({ message: "Server Error creating course" });
   }
 };
+
+// ==========================================
+// 5. DELETE COURSE
+// ==========================================
+exports.deleteCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const courseId = parseInt(id);
+
+    console.log(`🗑️ Attempting to delete course with ID: ${courseId}`);
+
+    await prisma.$transaction([
+
+      prisma.courseContent.deleteMany({
+        where: { course_id: courseId }
+      }),
+
+      prisma.enrollments.deleteMany({
+        where: { course_id: courseId }
+      }),
+
+      prisma.shoppingCart.deleteMany({
+        where: { course_id: courseId }
+      }),
+
+      prisma.userSavedCourses.deleteMany({
+        where: { course_id: courseId }
+      }),
+
+      prisma.courseTags.deleteMany({
+        where: { course_id: courseId }
+      }),
+
+      prisma.certificates.deleteMany({
+        where: { course_id: courseId }
+      }),
+
+      prisma.courses.delete({
+        where: { id: courseId }
+      })
+    ]);
+
+    console.log("✅ Course deleted successfully.");
+    res.json({ message: "Course deleted successfully" });
+
+  } catch (error) {
+    console.error("🔥 Error deleting course:", error);
+    res.status(500).json({ 
+      message: "Could not delete course.", 
+      error: error.message 
+    });
+  }
+};
+
+// ==========================================
+// 6. UPDATE COURSE
+// ==========================================
+exports.updateCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, price, category_id, level, thumbnail_url } = req.body;
+    const instructorId = req.user.userId;
+
+    const course = await prisma.courses.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+
+    if (course.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "You are not authorized to edit this course." });
+    }
+
+    const updatedCourse = await prisma.courses.update({
+      where: { id: parseInt(id) },
+      data: {
+        title,
+        description,
+        price: parseFloat(price),
+        category_id: parseInt(category_id),
+        level,
+        thumbnail_url,
+        updated_at: new Date()
+      }
+    });
+
+    res.json({ message: "Course updated successfully", course: updatedCourse });
+
+  } catch (error) {
+    console.error("Error updating course:", error);
+    res.status(500).json({ message: "Server Error updating course" });
+  }
+};

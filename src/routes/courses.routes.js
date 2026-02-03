@@ -11,4 +11,8 @@ router.get('/:id', courseController.getCourseById);
 router.get('/instructor/my-courses', authMiddleware, courseController.getInstructorCourses);
 router.post('/', authMiddleware, courseController.createCourse);
 
+router.delete('/:id', authMiddleware, courseController.deleteCourse);
+
+router.put('/:id', authMiddleware, courseController.updateCourse);
+
 module.exports = router;
