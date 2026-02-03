@@ -144,6 +144,8 @@ exports.createCourse = async (req, res) => {
     
     const instructor_id = req.user.userId;
 
+    const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
+
     if (!title || !price || !category_id) {
       return res.status(400).json({ message: "Please fill in all required fields." });
     }
@@ -155,7 +157,9 @@ exports.createCourse = async (req, res) => {
         price: parseFloat(price),
         category_id: parseInt(category_id),
         level: level || 'beginner',
-        thumbnail_url: thumbnail_url || '',
+
+        thumbnail_url: (thumbnail_url && thumbnail_url.trim() !== "") ? thumbnail_url : DEFAULT_IMAGE,
+        
         instructor_id: instructor_id,
         views: 0
       }
