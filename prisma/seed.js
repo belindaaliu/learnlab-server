@@ -1,5 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const bcrypt = require('bcrypt');
+
 
 async function main() {
   console.log('🌱 Start seeding...');
@@ -24,6 +26,28 @@ async function main() {
       console.log('✅ Instructor created:', instructor.id);
     } else {
       console.log('ℹ️ Instructor already exists.');
+    }
+
+    let admin = await prisma.users.findFirst({
+      where: { email: "admin@learnlab.ca" }
+    });
+
+    if (!admin) {
+      const hashedAdminPassword = await bcrypt.hash("Pass123!", 10);
+
+      admin = await prisma.users.create({
+        data: {
+          email: "admin@learnlab.ca",
+          password_hash: hashedAdminPassword,
+          first_name: "System",
+          last_name: "Administrator",
+          role: "admin",
+        }
+      });
+
+      console.log("Admin created:", admin.id);
+    } else {
+      console.log("Admin already exists.");
     }
 
     // 2. Creating categories (if they don't exist, we'll create them)
