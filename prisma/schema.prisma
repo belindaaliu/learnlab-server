@@ -2,10 +2,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
-
 datasource db {
   provider = "mysql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 model AssessmentOptions {
@@ -60,7 +59,6 @@ model Certificates {
 
   @@index([course_id], map: "fk_certificate_course")
   @@index([user_id], map: "fk_certificate_user")
-  @@unique([user_id, course_id], name: "unique_user_course_certificate")
 }
 
 model CourseContent {
@@ -250,11 +248,15 @@ model ShoppingCart {
 }
 
 model SubscriptionPlans {
-  id            BigInt          @id @default(autoincrement())
-  name          String          @db.VarChar(255)
-  price         Decimal         @db.Decimal(10, 2)
+  id            BigInt                       @id @default(autoincrement())
+  name          String                       @db.VarChar(255)
+  price         Decimal                      @db.Decimal(10, 2)
   duration_days Int
-  description   String?         @db.Text
+  description   String?                      @db.Text
+  plan_type     SubscriptionPlans_plan_type? @default(personal)
+  slug          String?                      @unique(map: "slug") @db.VarChar(50)
+  features      Json?
+  button_text   String?                      @db.VarChar(50)
   Payments      Payments[]
   Subscriptions Subscriptions[]
 }
@@ -407,4 +409,10 @@ enum Users_instructor_application_status {
   pending
   approved
   rejected
+}
+
+enum SubscriptionPlans_plan_type {
+  personal
+  team
+  enterprise
 }

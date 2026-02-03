@@ -1,137 +1,172 @@
-const prisma = require('../lib/prisma');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const prisma = require("../lib/prisma");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
-/**
- * Initiates the Stripe payment process
- * Generates a clientSecret to be used by the frontend CardElement
- */
 exports.createPaymentIntent = async (req, res) => {
-  const { cartItems } = req.body;
-  const userId = req.user.id; 
-
   try {
-    if (!cartItems || cartItems.length === 0) {
-      return res.status(400).json({ message: "Cart is empty" });
+    const { cartItems, planId, checkoutType } = req.body;
+    
+    const userId = req.user?.userId || req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
     }
 
-    // Security: Fetch courses from DB to get the true price, ignore frontend prices
-    const courseIds = cartItems.map(item => BigInt(item.course_id || item.id));
+    let amount = 0;
+    let metadata = { 
+      userId: userId.toString(), 
+      type: checkoutType 
+    };
 
-    const courses = await prisma.courses.findMany({
-      where: { id: { in: courseIds } }
-    });
+    if (checkoutType === "cart") {
+      if (!cartItems || cartItems.length === 0) {
+        return res.status(400).json({ message: "Cart is empty" });
+      }
+      
+      const courseIds = cartItems.map((item) => BigInt(item.id));
+      const courses = await prisma.courses.findMany({
+        where: { id: { in: courseIds } },
+      });
+      
+      amount = courses.reduce((sum, c) => sum + Number(c.price), 0);
+      metadata.courseIds = courseIds.join(",");
+    } else if (checkoutType === "subscription") {
+      const plan = await prisma.subscriptionPlans.findUnique({
+        where: { id: BigInt(planId) },
+      });
+      
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+      
+      amount = Number(plan.price);
+      metadata.planId = planId.toString();
+    } else {
+      return res.status(400).json({ message: "Invalid checkout type" });
+    }
 
-    const totalAmount = courses.reduce((sum, course) => {
-      return sum + Number(course.price);
-    }, 0);
-
-    // Create Stripe Payment Intent (Stripe uses cents)
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(totalAmount * 100),
-      currency: 'cad',
-      metadata: { 
-        userId: userId.toString(),
-        courseIds: courseIds.join(',') 
-      },
+      amount: Math.round(amount * 100), 
+      currency: "cad",
+      metadata: metadata,
       automatic_payment_methods: { enabled: true },
     });
 
-    res.status(200).json({
+    res.json({ 
       clientSecret: paymentIntent.client_secret,
-      totalAmount: totalAmount
+      totalAmount: Number(amount) 
     });
-
   } catch (error) {
-    console.error("Payment Intent Error:", error);
-    res.status(500).json({ message: "Internal server error during payment initiation" });
+    console.error("Stripe Intent Error:", error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Stripe Webhook Listener
- * Asynchronously handles payment success to ensure order fulfillment 
- * even if the user closes their browser.
- */
 exports.stripeWebhook = async (req, res) => {
-  const sig = req.headers['stripe-signature'];
+  const sig = req.headers["stripe-signature"];
   let event;
 
   try {
-    // Verify that the event actually came from Stripe
     event = stripe.webhooks.constructEvent(
-      req.body, 
-      sig, 
+      req.body,
+      sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error(`Webhook Signature Error: ${err.message}`);
+    console.error(`Webhook Error: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle successful payments
-  if (event.type === 'payment_intent.succeeded') {
-    const paymentIntent = event.data.object;
-    
-    const userId = paymentIntent.metadata.userId;
-    const courseIds = paymentIntent.metadata.courseIds.split(',');
-    const transactionId = paymentIntent.id;
-    const amount = paymentIntent.amount / 100;
+  if (event.type === "payment_intent.succeeded") {
+    const intent = event.data.object;
+    const { type, userId, courseIds, planId } = intent.metadata;
 
     try {
-      await fulfillOrder(userId, courseIds, transactionId, amount);
-      console.log(`Order fulfilled successfully for User ID: ${userId}`);
-    } catch (error) {
-      console.error("Fulfillment Error via Webhook:", error);
-      // Stripe will retry the webhook if we don't return a 200-series status
+      if (type === "cart") {
+        await exports.fulfillOrder(
+          userId,
+          courseIds.split(","),
+          intent.id,
+          intent.amount / 100
+        );
+      } else if (type === "subscription") {
+        await exports.fulfillSubscription(userId, planId, intent.id, intent.amount / 100);
+      }
+    } catch (fulfillmentError) {
+      console.error("Fulfillment Error:", fulfillmentError);
       return res.status(500).json({ error: "Fulfillment failed" });
     }
   }
-
-  res.status(200).json({ received: true });
+  res.status(200).send({ received: true });
 };
 
-/**
- *  Fulfillment Helper
- * Uses a Prisma Transaction to ensure data integrity
- */
+ // Course Fulfillment
 exports.fulfillOrder = async (userId, courseIds, transactionId, amount) => {
   const uId = BigInt(userId);
-  
-  return await prisma.$transaction(async (tx) => {
-    const results = [];
 
+  return await prisma.$transaction(async (tx) => {
     for (const cId of courseIds) {
       const courseId = BigInt(cId);
 
-      // Create Payment Record (mapped to your schema.prisma)
-      const payment = await tx.payments.create({
+      await tx.payments.create({
         data: {
           user_id: uId,
           course_id: courseId,
           amount: amount / courseIds.length,
-          currency: 'CAD',
-          method: 'stripe',
-          status: 'paid',
-          transaction_id: transactionId
-        }
+          currency: "CAD",
+          method: "stripe",
+          status: "paid",
+          transaction_id: transactionId,
+        },
       });
 
-      // Create Enrollment record
       await tx.enrollments.create({
         data: {
           user_id: uId,
-          course_id: courseId
-        }
+          course_id: courseId,
+        },
       });
-      
-      results.push(payment);
     }
 
-    // Clear the User's Shopping Cart after successful purchase
     await tx.shoppingCart.deleteMany({
-      where: { user_id: uId }
+      where: { user_id: uId },
+    });
+  });
+};
+
+// Subscription Fulfillment
+exports.fulfillSubscription = async (userId, planId, transactionId, amount) => {
+  const uId = BigInt(userId);
+  const pId = BigInt(planId);
+
+  return await prisma.$transaction(async (tx) => {
+    const plan = await tx.subscriptionPlans.findUnique({
+      where: { id: pId }
     });
 
-    return results;
+    if (!plan) throw new Error("Plan not found during fulfillment");
+
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(startDate.getDate() + plan.duration_days);
+
+    await tx.subscriptions.create({
+      data: {
+        user_id: uId,
+        plan_id: pId,
+        status: "active",
+        start_date: startDate,
+        end_date: endDate,
+      },
+    });
+
+    await tx.payments.create({
+      data: {
+        user_id: uId,
+        subscription_plan_id: pId,
+        amount: amount,
+        currency: 'CAD',
+        method: 'stripe',
+        status: 'paid',
+        transaction_id: transactionId
+      }
+    });
   });
 };
