@@ -1,14 +1,10 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
+const emailService = require('../services/emailService');
 
 const prisma = new PrismaClient();
 
-// Environment variables you'll need in your .env file:
-// JWT_SECRET=your-secret-key-here
-// JWT_REFRESH_SECRET=your-refresh-secret-key-here
-// JWT_EXPIRES_IN=15m
-// JWT_REFRESH_EXPIRES_IN=7d
 
 const authController = {
   /**
@@ -403,57 +399,69 @@ const authController = {
    * Request password reset
    * POST /api/auth/forgot-password
    */
-  forgotPassword: async (req, res) => {
-    try {
-      const { email } = req.body;
+forgotPassword: async (req, res) => {
+  try {
+    const { email } = req.body;
 
-      if (!email) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email is required',
-        });
-      }
-
-      const user = await prisma.users.findUnique({
-        where: { email: email.toLowerCase() },
-      });
-
-      // Don't reveal if user exists or not for security
-      if (!user) {
-        return res.status(200).json({
-          success: true,
-          message: 'If an account exists, a password reset link has been sent',
-        });
-      }
-
-      // Generate reset token (valid for 1 hour)
-      const resetToken = jwt.sign(
-        { userId: user.id, purpose: 'password-reset' },
-        process.env.JWT_SECRET,
-        { expiresIn: '1h' }
-      );
-
-      // TODO: Send email with reset link
-      // const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-      // await sendEmail(user.email, 'Password Reset', resetLink);
-
-      console.log('Password reset token:', resetToken);
-
-      res.status(200).json({
-        success: true,
-        message: 'If an account exists, a password reset link has been sent',
-        // Remove this in production - only for testing
-        resetToken,
-      });
-    } catch (error) {
-      console.error('Forgot password error:', error);
-      res.status(500).json({
+    if (!email) {
+      return res.status(400).json({
         success: false,
-        message: 'Server error during password reset request',
-        error: error.message,
+        message: 'Email is required',
       });
     }
-  },
+
+    const user = await prisma.users.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: 'If an account exists with that email, a password reset link has been sent',
+      });
+    }
+
+    // Generate reset token (valid for 1 hour)
+    const resetToken = jwt.sign(
+      { userId: user.id, purpose: 'password-reset' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // TEMPORARY: Log the reset link for testing
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    console.log('🔗 Password reset link:', resetLink);
+    console.log('🎫 Reset token:', resetToken);
+
+    // Send password reset email
+    try {
+      await emailService.sendPasswordResetEmail(user.email, resetToken);
+      
+      res.status(200).json({
+        success: true,
+        message: 'If an account exists with that email, a password reset link has been sent',
+        // TEMPORARY: Include token in response for testing
+        resetToken, // Remove this in production!
+      });
+    } catch (emailError) {
+      console.error('Failed to send reset email:', emailError);
+      
+      res.status(200).json({
+        success: true,
+        message: 'If an account exists with that email, a password reset link has been sent',
+        // TEMPORARY: Include token even if email fails
+        resetToken, // Remove this in production!
+      });
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during password reset request',
+      error: error.message,
+    });
+  }
+},
 
   /**
    * Reset password with token
