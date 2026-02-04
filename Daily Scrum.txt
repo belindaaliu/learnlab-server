@@ -346,10 +346,13 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
-
+- public profile page for student created in frontend and in backend supporting controller added.
+- profile edit page and side bar for editing settings for student created in frontend and in backend supporting controller added.
+- edit photo page added for student.
+- setup for uploading photos in s3 and uploadmiddleware added. 
 
 2. To do until next Scrum:
-
+working in quiz page.
 
 
 3. Need assistance / figure things out
@@ -434,17 +437,20 @@ Ali
 2. To do until next Scrum:
 - Start working on Course Content Management (Adding Sections and Lessons to a course).
 
-3. Need assistance / figure things out
 
+3. Need assistance / figure things out
+N/A
 
 ---
 Aleks
 
 1. Done / not done since last scrum:
-
+implemented forgot password page
+updated auth controller for email code verification
+implemented reset password page
 
 2. To do until next Scrum:
-
+Start working on messaging feature
 
 3. Need assistance / figure things out
 
@@ -483,7 +489,7 @@ Ali
 
 
 2. To do until next Scrum:
-
+- Start working on Course Content Management (Adding Sections and Lessons to a course).
 
 3. Need assistance / figure things out
 
