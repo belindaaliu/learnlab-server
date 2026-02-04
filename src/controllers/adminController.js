@@ -138,6 +138,21 @@ exports.getCourseReviewData = async (req, res) => {
 
 // Update course status (Publish/Flag/Draft)
 exports.updateCourseStatus = async (req, res) => {
-    //TODO: Add logic for updating course status
-    res.json({ success: true, message: "Course status updated (Stub)" });
+  try {
+    const { courseId } = req.params;
+    const { level } = req.body; 
+
+    const updatedCourse = await prisma.courses.update({
+      where: { id: BigInt(courseId) },
+      data: { level: level }
+    });
+
+    sendJson(res, { 
+      success: true, 
+      message: "Course level updated", 
+      data: updatedCourse 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
