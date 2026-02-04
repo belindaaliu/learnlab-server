@@ -15,4 +15,10 @@ router.delete('/:id', authMiddleware, courseController.deleteCourse);
 
 router.put('/:id', authMiddleware, courseController.updateCourse);
 
+router.post('/:id/sections', authMiddleware, courseController.createSection);
+
+// ✅ New routes for editing and deleting sections
+router.put('/:id/sections/:sectionId', authMiddleware, courseController.updateSection);
+router.delete('/:id/sections/:sectionId', authMiddleware, courseController.deleteSection);
+
 module.exports = router;

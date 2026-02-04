@@ -427,7 +427,9 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Refactored Instructor Layout and separated Navbar for better modularity.
+- Implemented deleteCourse API (fixed foreign key constraint issues with Prisma transactions).
+- Created EditCourse page (Frontend) and connected it to the updateCourse API (Backend).
 
 2. To do until next Scrum:
 - Start working on Course Content Management (Adding Sections and Lessons to a course).
