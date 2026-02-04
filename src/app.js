@@ -8,6 +8,7 @@ const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const messageRoutes = require('./routes/messageRoutes');
 
 
 const app = express();
@@ -38,5 +39,7 @@ app.get('/api', (req, res) => {
 
 app.use("/api/student", studentRoutes);
 app.use('/api/admin', adminRoutes);
+
+app.use('/api/messages', messageRoutes);
 
 module.exports = app;
