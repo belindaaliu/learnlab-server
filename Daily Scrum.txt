@@ -446,10 +446,12 @@ N/A
 Aleks
 
 1. Done / not done since last scrum:
-
+implemented forgot password page
+updated auth controller for email code verification
+implemented reset password page
 
 2. To do until next Scrum:
-
+Start working on messaging feature
 
 3. Need assistance / figure things out
 
