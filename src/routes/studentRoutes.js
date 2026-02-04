@@ -5,13 +5,16 @@ const {
   getCurrentUser,
   getPurchasedCourses,
   getWishlistCourses,
-  updateCurrentUser
+  updateCurrentUser,
 } = require("../controllers/Student/studentController");
+const { getRecommendations } = require("../controllers/Student/recommendationController");
 
 const router = express.Router();
 
 const upload = require("../middleware/uploadMiddleware");
 const { uploadPhoto } = require("../controllers/Student/studentController");
+
+// router.get("/search", searchCourses);
 
 // Current user
 router.get("/me/:id", getCurrentUser);
@@ -26,6 +29,12 @@ router.put("/me/:id", updateCurrentUser);
 
 
 router.post("/upload-photo/:id", upload.single("photo"), uploadPhoto);
+
+router.get("/:id/recommendations", getRecommendations);
+
+
+
+
 
 
 

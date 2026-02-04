@@ -167,9 +167,66 @@ const uploadPhoto = async (req, res) => {
   }
 };
 
+// ==========================================
+// Search Courses
+// ==========================================
 
+const searchCourses = async (req, res) => {
+  try {
+    const { q } = req.query;
 
+    if (!q || q.trim() === "") {
+      return res.status(400).json({ message: "Search query is required" });
+    }
 
+    const query = q.trim().toLowerCase();
+
+    // Fetch all courses with related fields
+    const courses = await prisma.courses.findMany({
+      include: {
+        Categories: true,
+        Users: {
+          select: { first_name: true, last_name: true },
+        },
+        CourseTags: true,
+      },
+    });
+
+    // Filter in JS for title, description, teacher, category, tags
+    const filteredCourses = courses.filter((course) => {
+      const titleMatch = course.title?.toLowerCase().includes(query);
+      const subtitleMatch = course.subtitle?.toLowerCase().includes(query);
+      const descriptionMatch = course.description?.toLowerCase().includes(query);
+      const categoryMatch = course.Categories?.name?.toLowerCase().includes(query);
+      const teacherMatch =
+        (course.Users?.first_name?.toLowerCase().includes(query) ||
+         course.Users?.last_name?.toLowerCase().includes(query));
+      const tagMatch =
+        course.CourseTags?.some(tag => tag.tag_name?.toLowerCase().includes(query));
+
+      return titleMatch || subtitleMatch || descriptionMatch || categoryMatch || teacherMatch || tagMatch;
+    });
+
+    // Format response
+    const formattedCourses = filteredCourses.map((course) => ({
+      id: course.id,
+      title: course.title,
+      price: course.price,
+      image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80",
+      category: course.Categories ? course.Categories.name : "Uncategorized",
+      instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : "Unknown Instructor",
+      tags: course.CourseTags?.map(tag => tag.tag_name) || [],
+      rating: 4.8, // placeholder
+      reviews: course.views,
+      level: course.level,
+    }));
+
+    res.json(formattedCourses);
+  } catch (error) {
+    console.error("Error searching courses:", error);
+    res.status(500).json({ message: "Server error searching courses" });
+  }
+};
 
 
 // ---------------- EXPORT ALL CONTROLLERS ----------------
@@ -179,4 +236,5 @@ module.exports = {
   getWishlistCourses,
   updateCurrentUser,
   uploadPhoto,
+  searchCourses,
 };

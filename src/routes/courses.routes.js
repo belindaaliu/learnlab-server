@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const courseController = require('../controllers/course.controller');
 const { authMiddleware } = require('../middleware/authMiddleware');
+const studentController = require('../controllers/Student/studentController');
 
 // PUBLIC ROUTES
+router.get('/search', studentController.searchCourses);
 router.get('/', courseController.getAllCourses);
 router.get('/:id', courseController.getCourseById);
 
