@@ -45,11 +45,32 @@ const getPurchasedCourses = async (req, res) => {
     const enrollments = await prisma.enrollments.findMany({
       where: { user_id: userId },
       include: {
-        Courses: true,
-      },
+        Courses: {
+          include: {
+            Users: {
+              select: {
+                first_name: true,
+                last_name: true
+              }
+            }
+          }
+        }
+      }
     });
 
-    const courses = enrollments.map(e => e.Courses);
+
+    const courses = enrollments.map((e) => ({
+      id: e.Courses.id,
+      title: e.Courses.title,
+      thumbnail_url: e.Courses.thumbnail_url,
+      price: e.Courses.price,
+      instructor: e.Courses.Users
+        ? `${e.Courses.Users.first_name} ${e.Courses.Users.last_name}`
+        : "Unknown Instructor",
+      total_lessons: e.Courses.total_lessons,
+      completed_lessons: e.Courses.completed_lessons,
+    }));
+
 
     res.json(courses);
 
@@ -68,11 +89,36 @@ const getWishlistCourses = async (req, res) => {
     const saved = await prisma.userSavedCourses.findMany({
       where: { user_id: userId },
       include: {
-        Courses: true,
+        Courses: {
+          include: {
+            Users: {
+              select: {
+                first_name: true,
+                last_name: true,
+              },
+            },
+            Categories: true,
+            CourseTags: true,
+          },
+        },
       },
     });
 
-    const courses = saved.map(s => s.Courses);
+    // Format clean response for frontend
+    const courses = saved.map((s) => ({
+      id: s.Courses.id,
+      title: s.Courses.title,
+      price: s.Courses.price,
+      thumbnail_url: s.Courses.thumbnail_url,
+      instructor: s.Courses.Users
+        ? `${s.Courses.Users.first_name} ${s.Courses.Users.last_name}`
+        : "Unknown Instructor",
+      category: s.Courses.Categories?.name || "Uncategorized",
+      tags: s.Courses.CourseTags?.map((t) => t.tag_name) || [],
+      rating: 4.8, // placeholder
+      reviews: s.Courses.views,
+      level: s.Courses.level,
+    }));
 
     res.json(courses);
 
@@ -81,6 +127,7 @@ const getWishlistCourses = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // ---------------- UPDATE CURRENT USER ----------------
 const updateCurrentUser = async (req, res) => {
@@ -229,6 +276,97 @@ const searchCourses = async (req, res) => {
 };
 
 
+// ---------------- ADD COURSE TO WISHLIST ----------------
+const addCourseToWishlist = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({ message: "course_id is required" });
+    }
+
+    // Check if already saved
+    const exists = await prisma.userSavedCourses.findFirst({
+      where: { user_id: userId, course_id: Number(course_id) },
+    });
+
+    if (exists) {
+      return res.status(400).json({ message: "Course already in wishlist" });
+    }
+
+    const savedCourse = await prisma.userSavedCourses.create({
+      data: {
+        user_id: userId,
+        course_id: Number(course_id),
+      },
+    });
+
+    res.status(201).json(savedCourse);
+
+  } catch (error) {
+    console.error("Error adding course to wishlist:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ---------------- ENROLL IN COURSE ----------------
+const enrollCourse = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    const { course_id } = req.body;
+
+    if (!course_id) {
+      return res.status(400).json({ message: "course_id is required" });
+    }
+
+    // Check if already enrolled
+    const alreadyEnrolled = await prisma.enrollments.findFirst({
+      where: { user_id: userId, course_id: Number(course_id) },
+    });
+
+    if (alreadyEnrolled) {
+      return res.status(400).json({ message: "User already enrolled in this course" });
+    }
+
+    // 1️⃣ Create enrollment
+    const enrollment = await prisma.enrollments.create({
+      data: {
+        user_id: userId,
+        course_id: Number(course_id),
+      },
+    });
+
+    // 2️⃣ Fetch all course content
+    const contents = await prisma.courseContent.findMany({
+      where: { course_id: Number(course_id) },
+    });
+
+    // 3️⃣ Create LessonProgress entries
+    const progressPromises = contents.map((content) =>
+      prisma.lessonProgress.create({
+        data: {
+          user_id: userId,
+          content_id: content.id,
+        },
+      })
+    );
+
+    await Promise.all(progressPromises);
+
+    res.status(201).json({
+      enrollment,
+      lesson_progress_created: contents.length,
+    });
+
+  } catch (error) {
+    console.error("Error enrolling course:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
 // ---------------- EXPORT ALL CONTROLLERS ----------------
 module.exports = {
   getCurrentUser,
@@ -237,4 +375,6 @@ module.exports = {
   updateCurrentUser,
   uploadPhoto,
   searchCourses,
+  addCourseToWishlist,
+  enrollCourse,
 };

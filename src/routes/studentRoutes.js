@@ -14,7 +14,14 @@ const router = express.Router();
 const upload = require("../middleware/uploadMiddleware");
 const { uploadPhoto } = require("../controllers/Student/studentController");
 
-// router.get("/search", searchCourses);
+const { addCourseToWishlist, enrollCourse } = require("../controllers/Student/studentController");
+
+// Add to wishlist
+router.post("/:id/wishlist", addCourseToWishlist);
+
+// Enroll in course
+router.post("/:id/enrollments", enrollCourse);
+
 
 // Current user
 router.get("/me/:id", getCurrentUser);

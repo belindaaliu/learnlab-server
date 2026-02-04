@@ -405,10 +405,13 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
-
+- search courses in student dashboard added. 
+- recommended courses for student in dashboard added.
+- backend for add course to Wishlist and enroll in course added.
+- progress bar for enrolled courses in my courses and course cards in wishlist added in frontend.
 
 2. To do until next Scrum:
-
+- working on Course Progress 
 
 
 3. Need assistance / figure things out
