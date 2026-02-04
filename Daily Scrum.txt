@@ -418,10 +418,12 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Created initial structure of the admin panel.
+- Created frontend and backend logic for admin to review instructors.
+- Set up app on heroku.
 
 2. To do until next Scrum:
-
+- Work on admin/courses routes.
 
 3. Need assistance / figure things out
 
