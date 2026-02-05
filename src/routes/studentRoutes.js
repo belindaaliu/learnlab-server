@@ -6,46 +6,40 @@ const {
   getPurchasedCourses,
   getWishlistCourses,
   updateCurrentUser,
+  uploadPhoto,
+  searchCourses,
+  addCourseToWishlist,
+  removeFromWishlist,
+  enrollCourse,
 } = require("../controllers/Student/studentController");
 const { getRecommendations } = require("../controllers/Student/recommendationController");
 
 const router = express.Router();
-
 const upload = require("../middleware/uploadMiddleware");
-const { uploadPhoto } = require("../controllers/Student/studentController");
 
-const { addCourseToWishlist, enrollCourse } = require("../controllers/Student/studentController");
 
-// Add to wishlist
+// WISHLIST ROUTES
 router.post("/:id/wishlist", addCourseToWishlist);
+router.get("/:id/wishlist", getWishlistCourses);
+router.delete("/:id/wishlist/:courseId", removeFromWishlist);
 
-// Enroll in course
+
+// ENROLLMENT ROUTES
 router.post("/:id/enrollments", enrollCourse);
-
-
-// Current user
-router.get("/me/:id", getCurrentUser);
-
-// Purchased courses
 router.get("/:id/courses", getPurchasedCourses);
 
-// Wishlist courses
-router.get("/:id/wishlist", getWishlistCourses);
-
+// USER PROFILE ROUTES
+router.get("/me/:id", getCurrentUser);
 router.put("/me/:id", updateCurrentUser);
-
-
 router.post("/upload-photo/:id", upload.single("photo"), uploadPhoto);
 
+
+// SEARCH & RECOMMENDATIONS
+router.get("/search", searchCourses);
 router.get("/:id/recommendations", getRecommendations);
 
 
-
-
-
-
-
-// Certificates
+// CERTIFICATES
 router.get('/certificates', authMiddleware, certController.getStudentCertificates);
 router.get('/certificates/:courseId/download', authMiddleware, certController.downloadCertificate);
 
