@@ -377,10 +377,12 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+-Added charts to admin dashboard
+-Added pdf report generation to admin dashboard
+-Added filter by date range to admin dashboard 
 
 2. To do until next Scrum:
-
+- Fix error on subscription and cart page on the live app.
 
 3. Need assistance / figure things out
 

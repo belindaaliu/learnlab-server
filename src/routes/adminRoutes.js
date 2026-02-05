@@ -10,8 +10,10 @@ router.use(roleMiddleware('admin'));
  // --- DASHBOARD & ANALYTICS ---
 
 router.get('/dashboard-stats', adminController.getDashboardStats);
-// router.get('/analytics/revenue', adminController.getRevenueAnalytics);
+router.get('/analytics', adminController.getAnalytics);
+router.get('/analytics/advanced', adminController.getAnalytics);
 // router.get('/analytics/enrollments', adminController.getEnrollmentAnalytics);
+// router.get('/analytics/advanced', adminController.getPureInsights);
 
 
  // --- INSTRUCTOR MANAGEMENT ---
