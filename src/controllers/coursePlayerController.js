@@ -6,7 +6,7 @@ const prisma = require("../lib/prisma");
 const getCoursePlayerData = async (req, res) => {
   try {
     const courseId = Number(req.params.courseId);
-    const userId = Number(req.user.id); // important
+    const userId = Number(req.user.userId); // important
 
     // Fetch course info
     const course = await prisma.courses.findUnique({
@@ -121,7 +121,7 @@ const getLessonById = async (req, res) => {
 // MARK LESSON COMPLETE
 // =======================
 const markLessonComplete = async (req, res) => {
-  const userId = Number(req.user.id);
+  const userId = Number(req.user.userId);
   const lessonId = Number(req.params.lessonId);
 
   await prisma.lessonProgress.upsert({
@@ -146,7 +146,7 @@ const markLessonComplete = async (req, res) => {
 // =======================
 const submitCourseReview = async (req, res) => {
   try {
-    const userId = Number(req.user.id);
+    const userId = Number(req.user.userId);
     const courseId = Number(req.params.courseId);
     const { rating, review } = req.body;
 
@@ -171,7 +171,7 @@ const submitCourseReview = async (req, res) => {
 // GET next uncompleted lesson
 const getNextLesson = async (req, res) => {
   try {
-    const userId = Number(req.user.id);
+    const userId = Number(req.user.userId);
     const courseId = Number(req.params.courseId);
 
     // Get all video lessons ordered

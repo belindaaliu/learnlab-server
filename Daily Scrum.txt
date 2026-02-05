@@ -364,10 +364,11 @@ Start working on messaging feature
 Samira
 
 1. Done / not done since last scrum:
-
+- updated MainLayout, StudentLayout, InstructorLayout, and AdminLayout to render the appropriate layout based on user role.
+- first version of course player for student added in backend and front end.
 
 2. To do until next Scrum:
-
+-finishing course player page.
 
 
 3. Need assistance / figure things out
