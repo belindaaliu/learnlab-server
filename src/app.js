@@ -8,6 +8,8 @@ const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const messageRoutes = require('./routes/messageRoutes');
+const coursePlayerRoutes = require("./routes/coursePlayerRoutes");
 
 
 const app = express();
@@ -38,5 +40,9 @@ app.get('/api', (req, res) => {
 
 app.use("/api/student", studentRoutes);
 app.use('/api/admin', adminRoutes);
+
+app.use('/api/messages', messageRoutes);
+
+app.use("/api/course-player", coursePlayerRoutes);
 
 module.exports = app;

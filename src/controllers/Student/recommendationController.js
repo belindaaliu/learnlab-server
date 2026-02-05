@@ -1,45 +1,83 @@
-import prisma from "../lib/prisma.js";
+const prisma = require("../../lib/prisma");
 
-export const getRecommendations = async (req, res) => {
-  const userId = Number(req.params.userId);
+const getRecommendations = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
 
-  const user = await prisma.users.findUnique({
-    where: { id: userId },
-    select: {
-      occupation: true,
-      skills: true,
-      interests: true,
+    const user = await prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        skills: true,
+        interests: true,
+        field_of_learning: true,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const skills = Array.isArray(user.skills) ? user.skills.map(s => s.toLowerCase()) : [];
+    const interests = Array.isArray(user.interests) ? user.interests.map(i => i.toLowerCase()) : [];
+    const field = user.field_of_learning?.toLowerCase() || "";
+
+    // Fetch purchased courses
+    const purchased = await prisma.enrollments.findMany({
+      where: { user_id: userId },
+      select: {
+        Courses: { select: { title: true } },
+        course_id: true,
+      },
+    });
+
+    const purchasedIds = purchased.map(p => p.course_id);
+    const purchasedTitles = purchased.map(p => p.Courses.title?.toLowerCase() || "");
+
+    // Build keyword list
+    const keywords = [...skills, ...interests, field, ...purchasedTitles].filter(Boolean);
+
+    // Fetch all courses except purchased
+    const allCourses = await prisma.courses.findMany({
+      where: { id: { notIn: purchasedIds } },
+      include: {
+        CourseTags: true,
+        Categories: true,
+        Users: { select: { first_name: true, last_name: true } },
+      },
+    });
+
+    // Filter in JS
+    const recommended = allCourses.filter(course => {
+      const titleMatch = course.title?.toLowerCase().includes(field) || keywords.some(k => course.title?.toLowerCase().includes(k));
+      const descriptionMatch = keywords.some(k => course.description?.toLowerCase().includes(k));
+      const categoryMatch = keywords.some(k => course.Categories?.name?.toLowerCase().includes(k));
+      const tagMatch = course.CourseTags?.some(tag => keywords.includes(tag.tag_name?.toLowerCase()));
+      const instructorMatch = keywords.some(k => 
+        course.Users && (
+          course.Users.first_name?.toLowerCase().includes(k) || 
+          course.Users.last_name?.toLowerCase().includes(k)
+        )
+      );
+
+      return titleMatch || descriptionMatch || categoryMatch || tagMatch || instructorMatch;
+    });
+
+    // Limit to 12
+    const topRecommended = recommended.slice(0, 12);
+
+    // Fallback: If nothing matched, show popular courses
+    if (topRecommended.length === 0) {
+      const popular = await prisma.courses.findMany({
+        orderBy: { enrollments_count: "desc" },
+        take: 6,
+      });
+      return res.json(popular);
     }
-  });
 
-  if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(topRecommended);
 
-  const keywords = [
-    ...(user.skills || []),
-    ...(user.interests || []),
-    user.occupation
-  ].filter(Boolean);
-
-  const courses = await prisma.courses.findMany({
-    where: {
-      OR: [
-        { title: { contains: keywords.join(" "), mode: "insensitive" } },
-        { description: { contains: keywords.join(" "), mode: "insensitive" } },
-        {
-          CourseTags: {
-            some: {
-              tag_name: { in: keywords, mode: "insensitive" }
-            }
-          }
-        }
-      ]
-    },
-    include: {
-      CourseTags: true,
-      Users: true
-    },
-    take: 10
-  });
-
-  res.json({ recommended: courses });
+  } catch (error) {
+    console.error("Recommendation error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
+
+module.exports = { getRecommendations };
