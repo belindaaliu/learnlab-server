@@ -12,23 +12,20 @@ exports.getDashboardStats = async (req, res) => {
   try {
     const { start, end } = req.query;
 
-    // 1. Setup Filters
     const dateFilter = {};
-    const enrollmentDateFilter = {}; // Specific for Enrollments table
+    const enrollmentDateFilter = {}; 
 
     if (start && end) {
       const startDate = new Date(start);
       const endDate = new Date(end);
 
       if (!isNaN(startDate) && !isNaN(endDate)) {
-        // Tables using 'created_at'
         dateFilter.created_at = { gte: startDate, lte: endDate };
-        // Enrollment table using 'enrolled_at'
         enrollmentDateFilter.enrolled_at = { gte: startDate, lte: endDate };
       }
     }
 
-    // 2. Setup SQL Filters for Raw Queries
+    // SQL Filters for Raw Queries
     const hasDates = start && end;
     const sqlFilter = hasDates
       ? `AND created_at BETWEEN '${start}' AND '${end}'`
@@ -37,7 +34,7 @@ exports.getDashboardStats = async (req, res) => {
       ? `AND cs.created_at BETWEEN '${start}' AND '${end}'`
       : "";
 
-    // 3. Fetch Core Metrics (Prisma Client)
+    //  Core Metrics (Prisma Client)
     const [
       totalUsers,
       totalStudents,
@@ -56,10 +53,10 @@ exports.getDashboardStats = async (req, res) => {
         where: { ...dateFilter, status: "paid" },
       }),
       prisma.courses.count({ where: dateFilter }),
-      prisma.enrollments.count({ where: enrollmentDateFilter }), // Uses correct column
+      prisma.enrollments.count({ where: enrollmentDateFilter }), 
     ]);
 
-    // 4. Fetch Visual/Chart Data (Raw SQL)
+    //  Visual/Chart Data (Raw SQL)
     const [revenueByMonth, usersByMonth, popularCategories] = await Promise.all(
       [
         prisma.$queryRawUnsafe(`
@@ -88,7 +85,7 @@ exports.getDashboardStats = async (req, res) => {
       ],
     );
 
-    // 5. Fetch Activity Feed (Recent items)
+    // Activity Feed (Recent items)
     const [latestUsers, latestPayments] = await Promise.all([
       prisma.users.findMany({
         where: { role: "student" },
@@ -112,7 +109,7 @@ exports.getDashboardStats = async (req, res) => {
       }),
     ]);
 
-    // 6. Return Serialized JSON
+    // Serialized JSON
     res.json(
       serialize({
         metrics: {
@@ -157,38 +154,153 @@ exports.getAnalytics = async (req, res) => {
       totalPayments,
       quizStats,
       difficultQuestions,
+      revenueTrendData,
     ] = await Promise.all([
-      prisma.$queryRaw`SELECT cs.id, cs.title, COUNT(e.id) AS enrollments FROM Courses cs LEFT JOIN Enrollments e ON e.course_id = cs.id GROUP BY cs.id, cs.title ORDER BY enrollments DESC LIMIT 10`,
-      prisma.$queryRaw`SELECT cs.id, cs.title, AVG(r.rating) AS avg_rating FROM Courses cs JOIN Reviews r ON r.course_id = cs.id GROUP BY cs.id, cs.title ORDER BY avg_rating DESC LIMIT 10`,
-      prisma.$queryRaw`SELECT cs.id, cs.title, CAST(SUM(CASE WHEN lp.is_completed = 0 THEN 1 ELSE 0 END) AS UNSIGNED) AS incomplete, CAST(COUNT(lp.id) AS UNSIGNED) AS total FROM Courses cs JOIN CourseContent cc ON cc.course_id = cs.id JOIN LessonProgress lp ON lp.content_id = cc.id GROUP BY cs.id, cs.title ORDER BY incomplete DESC LIMIT 10`,
-      prisma.$queryRaw`SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) AS name, COUNT(lp.id) AS completed_lessons FROM Users u JOIN LessonProgress lp ON lp.user_id = u.id WHERE lp.is_completed = 1 GROUP BY u.id, u.first_name, u.last_name ORDER BY completed_lessons DESC LIMIT 10`,
-      prisma.$queryRaw`SELECT c.name AS category, SUM(p.amount) AS total FROM Payments p JOIN Courses cs ON cs.id = p.course_id JOIN Categories c ON c.id = cs.category_id WHERE p.status = 'paid' GROUP BY c.name`,
+      // Top Courses by Enrollment
+      prisma.$queryRaw`
+        SELECT cs.id, cs.title, CAST(COUNT(e.id) AS UNSIGNED) AS enrollments 
+        FROM Courses cs 
+        LEFT JOIN Enrollments e ON e.course_id = cs.id 
+        GROUP BY cs.id, cs.title 
+        ORDER BY enrollments DESC 
+        LIMIT 10`,
+
+      // Highest Rated Courses
+      prisma.$queryRaw`
+        SELECT cs.id, cs.title, CAST(AVG(r.rating) AS DECIMAL(10,2)) AS avg_rating 
+        FROM Courses cs 
+        JOIN Reviews r ON r.course_id = cs.id 
+        GROUP BY cs.id, cs.title 
+        ORDER BY avg_rating DESC 
+        LIMIT 10`,
+
+      // Drop-off Risk
+      prisma.$queryRaw`
+        SELECT 
+          cs.id, 
+          cs.title, 
+          CAST(SUM(CASE WHEN lp.is_completed = 0 THEN 1 ELSE 0 END) AS UNSIGNED) AS incomplete, 
+          CAST(COUNT(lp.id) AS UNSIGNED) AS total 
+        FROM Courses cs 
+        JOIN CourseContent cc ON cc.course_id = cs.id 
+        JOIN LessonProgress lp ON lp.content_id = cc.id 
+        GROUP BY cs.id, cs.title 
+        ORDER BY incomplete DESC 
+        LIMIT 10`,
+
+      // Most Active Learners 
+      prisma.$queryRaw`
+        SELECT 
+          u.id, 
+          CONCAT(u.first_name, ' ', u.last_name) AS name, 
+          CAST(COUNT(lp.id) AS UNSIGNED) AS completed_lessons 
+        FROM Users u 
+        JOIN LessonProgress lp ON lp.user_id = u.id 
+        WHERE lp.is_completed = 1 OR lp.is_completed = true
+        GROUP BY u.id, u.first_name, u.last_name 
+        ORDER BY completed_lessons DESC 
+        LIMIT 10`,
+
+      // Financials: Revenue by Category 
+      prisma.$queryRaw`
+        SELECT 
+          c.name AS category, 
+          CAST(SUM(p.amount) AS DOUBLE) AS total 
+        FROM Payments p 
+        JOIN Courses cs ON cs.id = p.course_id 
+        JOIN Categories c ON c.id = cs.category_id 
+        WHERE p.status = 'paid' 
+        GROUP BY c.name`,
+
+      // Global Refund Count
       prisma.payments.count({ where: { status: "refunded" } }),
+
+      // Total Payment Count
       prisma.payments.count(),
-      prisma.$queryRaw`SELECT a.id, a.title, CAST(COUNT(qa.id) AS UNSIGNED) AS attempts, AVG(qa.score) AS avg_score FROM Assessments a LEFT JOIN QuizAttempts qa ON qa.assessment_id = a.id GROUP BY a.id, a.title`,
-      prisma.$queryRaw`SELECT q.id, q.question_text, AVG(CASE WHEN o.is_correct = 1 THEN 1.0 ELSE 0.0 END) AS correct_rate FROM AssessmentQuestions q JOIN UserAnswers ua ON ua.question_id = q.id LEFT JOIN AssessmentOptions o ON ua.selected_option_id = o.id GROUP BY q.id, q.question_text ORDER BY correct_rate ASC LIMIT 10`,
+
+      // General Quiz Performance
+      prisma.$queryRaw`
+        SELECT 
+          a.id, 
+          a.title, 
+          CAST(COUNT(qa.id) AS UNSIGNED) AS attempts, 
+          CAST(AVG(qa.score) AS DECIMAL(10,2)) AS avg_score 
+        FROM Assessments a 
+        LEFT JOIN QuizAttempts qa ON qa.assessment_id = a.id 
+        GROUP BY a.id, a.title`,
+
+      // Identifying Difficult Questions
+      prisma.$queryRaw`
+        SELECT 
+          q.id, 
+          q.question_text, 
+          CAST(AVG(CASE WHEN o.is_correct = 1 THEN 1.0 ELSE 0.0 END) AS DECIMAL(10,2)) AS correct_rate 
+        FROM AssessmentQuestions q 
+        JOIN UserAnswers ua ON ua.question_id = q.id 
+        LEFT JOIN AssessmentOptions o ON ua.selected_option_id = o.id 
+        GROUP BY q.id, q.question_text 
+        ORDER BY correct_rate ASC 
+        LIMIT 10`,
+
+      // Trend Comparison: Current 30 days vs Previous 30 days
+      prisma.$queryRaw`
+        SELECT 
+          CAST(SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN amount ELSE 0 END) AS DOUBLE) as currentPeriod,
+          CAST(SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY) AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY) THEN amount ELSE 0 END) AS DOUBLE) as previousPeriod
+        FROM Payments 
+        WHERE status = 'paid'`,
     ]);
 
-    res.json(
-      serialize({
-        courseAnalytics: {
-          mostEnrolledCourses,
-          highestRatedCourses,
-          dropOffCourses,
-        },
-        userAnalytics: { mostActiveLearners },
-        financialAnalytics: {
-          revenueByCategory,
-          refundRate,
-          refundPercentage:
-            totalPayments === 0 ? 0 : (refundRate / totalPayments) * 100,
-        },
-        engagementAnalytics: { quizStats, difficultQuestions },
-      }),
-    );
+    // --- CALCULATE TREND & PREDICTION ---
+    const stats = revenueTrendData[0] || {
+      currentPeriod: 0,
+      previousPeriod: 0,
+    };
+    const current30Days = Number(stats.currentPeriod || 0);
+    const previous30Days = Number(stats.previousPeriod || 0);
+
+    // Calculate Trend Percentage
+    let revenueTrend = 0;
+    if (previous30Days > 0) {
+      revenueTrend = ((current30Days - previous30Days) / previous30Days) * 100;
+    } else if (current30Days > 0) {
+      revenueTrend = 100;
+    }
+
+    // Calculate Predictive Revenue (Run Rate)
+    // Formula: (Total Revenue so far / Days passed) * Total days in month
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+    ).getDate();
+    const projectedRevenue = (current30Days / dayOfMonth) * daysInMonth;
+
+    const analyticsData = {
+      courseAnalytics: {
+        mostEnrolledCourses,
+        highestRatedCourses,
+        dropOffCourses,
+      },
+      userAnalytics: { mostActiveLearners },
+      financialAnalytics: {
+        revenueByCategory,
+        refundRate,
+        refundPercentage:
+          totalPayments === 0 ? 0 : (refundRate / totalPayments) * 100,
+        revenueTrend: revenueTrend,
+        currentMonthTotal: current30Days,
+        projectedRevenue: projectedRevenue,
+      },
+      engagementAnalytics: { quizStats, difficultQuestions },
+    };
+
+    res.json(serialize(analyticsData));
   } catch (error) {
     console.error("Analytics Error:", error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
