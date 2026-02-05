@@ -486,13 +486,13 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Finishing the Adding Sections to a course.
 
 2. To do until next Scrum:
-- Start working on Course Content Management (Adding Sections and Lessons to a course).
+- Start working on Course Content Management (Adding Lessons to a course).
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
