@@ -421,10 +421,10 @@ Bug fixes, testing to finish 1st sprint
 Samira
 
 1. Done / not done since last scrum:
-
+- course player page debugged and need testing after finishing course creation by instructor. 
 
 2. To do until next Scrum:
-
+- quiz page
 
 
 3. Need assistance / figure things out

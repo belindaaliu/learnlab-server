@@ -10,13 +10,15 @@ const getCoursePlayerData = async (req, res) => {
 
     // Fetch course info
     const course = await prisma.courses.findUnique({
-      where: { id: courseId },
-      include: {
-        Users: { select: { first_name: true, last_name: true } },
-        Categories: true,
-        CourseReviews: true,
-      }
+    where: { id: BigInt(courseId) },
+    include: {
+        Users: true,        // instructor
+        Categories: true,   // category
+        Reviews: true,      // course reviews
+        CourseContent: true // lessons/content
+    }
     });
+
 
     if (!course) return res.status(404).json({ message: "Course not found" });
 
@@ -36,28 +38,32 @@ const getCoursePlayerData = async (req, res) => {
 
     // Format response
     const formatted = {
-      id: course.id,
-      title: course.title,
-      description: course.description,
-      image: course.thumbnail_url,
-      instructor: `${course.Users.first_name} ${course.Users.last_name}`,
-      category: course.Categories?.name,
-      rating: course.CourseReviews.length
-        ? (course.CourseReviews.reduce((a, b) => a + b.rating, 0) / course.CourseReviews.length).toFixed(1)
-        : 4.8,
-      reviews: course.CourseReviews.length,
-      students: course.views,
+    id: course.id,
+    title: course.title,
+    description: course.description,
+    image: course.thumbnail_url,
+    instructor: `${course.Users.first_name} ${course.Users.last_name}`,
+    category: course.Categories?.name,
 
-      // ⭐ ADD THESE TWO
-      total_lessons: totalLessons,
-      completed_lessons: completedLessons
+    rating: course.Reviews.length
+        ? (course.Reviews.reduce((a, b) => a + b.rating, 0) / course.Reviews.length).toFixed(1)
+        : 4.8,
+
+    reviews: course.Reviews.length,
+    students: course.views,
+
+    total_lessons: totalLessons,
+    completed_lessons: completedLessons
     };
+
 
     res.json(formatted);
 
   } catch (error) {
     console.error("Error fetching course player data:", error);
     res.status(500).json({ message: "Server error" });
+    console.error("COURSE PLAYER ERROR:", error.message, error);
+
   }
 };
 
