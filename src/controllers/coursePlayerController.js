@@ -42,12 +42,24 @@ const getCoursePlayerData = async (req, res) => {
     title: course.title,
     description: course.description,
     image: course.thumbnail_url,
-    instructor: `${course.Users.first_name} ${course.Users.last_name}`,
+
+    updated_at: course.updated_at,
+
+    instructor: {
+        name: `${course.Users.first_name} ${course.Users.last_name}`,
+        headline: course.Users.headline,
+        biography: course.Users.biography,
+        photo: course.Users.photo_url
+    },
+
     category: course.Categories?.name,
 
     rating: course.Reviews.length
-        ? (course.Reviews.reduce((a, b) => a + b.rating, 0) / course.Reviews.length).toFixed(1)
-        : 4.8,
+        ? (
+            course.Reviews.reduce((a, b) => a + b.rating, 0) /
+            course.Reviews.length
+        ).toFixed(1)
+        : null,
 
     reviews: course.Reviews.length,
     students: course.views,
@@ -55,6 +67,7 @@ const getCoursePlayerData = async (req, res) => {
     total_lessons: totalLessons,
     completed_lessons: completedLessons
     };
+
 
 
     res.json(formatted);
