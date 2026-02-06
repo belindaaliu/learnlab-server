@@ -183,38 +183,6 @@ const updateCurrentUser = async (req, res) => {
   }
 };
 
-// ---------------- UPLOAD PHOTO ----------------
-const uploadPhoto = async (req, res) => {
-  try {
-    const userId = Number(req.params.id);
-
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
-    }
-
-    const ext = req.file.originalname.split(".").pop();
-    const randomName = crypto.randomBytes(16).toString("hex");
-
-    const params = {
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: `profile_photos/${randomName}.${ext}`,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-    };
-
-    const uploadResult = await s3.upload(params).promise();
-
-    const updated = await prisma.users.update({
-      where: { id: userId },
-      data: { photo_url: uploadResult.Location },
-    });
-
-    res.json(updated);
-  } catch (error) {
-    console.error("Photo upload error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
 
 // ---------------- SEARCH COURSES ----------------
 const searchCourses = async (req, res) => {
@@ -415,7 +383,6 @@ module.exports = {
   getPurchasedCourses,
   getWishlistCourses,
   updateCurrentUser,
-  uploadPhoto,
   searchCourses,
   addCourseToWishlist,
   removeFromWishlist,

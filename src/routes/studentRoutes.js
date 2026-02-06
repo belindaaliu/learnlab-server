@@ -6,7 +6,6 @@ const {
   getPurchasedCourses,
   getWishlistCourses,
   updateCurrentUser,
-  uploadPhoto,
   searchCourses,
   addCourseToWishlist,
   removeFromWishlist,
@@ -31,7 +30,6 @@ router.get("/:id/courses", getPurchasedCourses);
 // USER PROFILE ROUTES
 router.get("/me/:id", getCurrentUser);
 router.put("/me/:id", updateCurrentUser);
-router.post("/upload-photo/:id", upload.single("photo"), uploadPhoto);
 
 
 // SEARCH & RECOMMENDATIONS

@@ -11,6 +11,7 @@ const publicRoutes = require('./routes/publicRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const coursePlayerRoutes = require("./routes/coursePlayerRoutes");
 const uploadRoutes = require('./routes/upload.routes');
+const userRoutes = require('./routes/userRoutes');
 
 
 const app = express();
@@ -47,5 +48,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes);
 
 app.use("/api/course-player", coursePlayerRoutes);
+
+app.use('/api/users', userRoutes);
+
 
 module.exports = app;
