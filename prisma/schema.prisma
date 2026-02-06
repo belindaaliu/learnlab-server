@@ -62,20 +62,21 @@ model Certificates {
 }
 
 model CourseContent {
-  id                  BigInt             @id @default(autoincrement())
-  course_id           BigInt
-  parent_id           BigInt?
-  title               String             @db.VarChar(255)
-  type                CourseContent_type
-  video_url           String?            @db.VarChar(500)
-  note_content        String?            @db.Text
-  duration_seconds    Int?
-  order_index         Int
-  Assessments         Assessments[]
-  Courses             Courses            @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_course")
-  CourseContent       CourseContent?     @relation("CourseContentToCourseContent", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_parent")
-  other_CourseContent CourseContent[]    @relation("CourseContentToCourseContent")
-  LessonProgress      LessonProgress[]
+  id               BigInt             @id @default(autoincrement())
+  course_id        BigInt
+  parent_id        BigInt?           
+  title            String             @db.VarChar(255)
+  type             CourseContent_type // video, assessment, section, note
+  is_preview       Boolean            @default(false)
+  video_url        String?            @db.VarChar(500)
+  note_content     String?            @db.Text
+  duration_seconds Int?
+  order_index      Int
+  Assessments      Assessments[]
+  Courses          Courses            @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_course")
+  ParentSection    CourseContent?     @relation("CourseContentToCourseContent", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_parent")
+  ChildLessons     CourseContent[]    @relation("CourseContentToCourseContent")
+  LessonProgress   LessonProgress[]
 
   @@index([course_id], map: "fk_content_course")
   @@index([parent_id], map: "fk_content_parent")
