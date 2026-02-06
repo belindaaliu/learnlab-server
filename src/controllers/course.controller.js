@@ -356,3 +356,235 @@ exports.deleteSection = async (req, res) => {
     res.status(500).json({ message: "Server Error deleting section" });
   }
 };
+
+// ==========================================
+// 10. CREATE LESSON
+// ==========================================
+exports.createLesson = async (req, res) => {
+  try {
+    const { id, sectionId } = req.params;
+    const { title, type, is_preview } = req.body;
+    const instructorId = req.user.userId;
+
+
+    const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
+    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied. You are not the instructor of this course." });
+    }
+
+
+    const section = await prisma.courseContent.findFirst({
+      where: { 
+        id: parseInt(sectionId), 
+        course_id: parseInt(id),
+        type: 'section' 
+      }
+    });
+    if (!section) {
+      return res.status(404).json({ message: "Section not found in this course." });
+    }
+
+    const lastLesson = await prisma.courseContent.findFirst({
+      where: { parent_id: parseInt(sectionId) },
+      orderBy: { order_index: 'desc' }
+    });
+    const newOrder = lastLesson ? lastLesson.order_index + 1 : 0;
+
+
+    const newLesson = await prisma.courseContent.create({
+      data: {
+        course_id: parseInt(id),
+        parent_id: parseInt(sectionId),
+        title: title,
+        type: type || 'video',
+        is_preview: is_preview || false,
+        order_index: newOrder
+      }
+    });
+
+    res.status(201).json(newLesson);
+
+  } catch (error) {
+    console.error("Error creating lesson:", error);
+    res.status(500).json({ message: "Server Error creating lesson" });
+  }
+};
+
+// ==========================================
+// 11. UPDATE LESSON
+// ==========================================
+exports.updateLesson = async (req, res) => {
+  try {
+    const { id, lessonId } = req.params;
+    const { title, is_preview, video_url, note_content } = req.body;
+    const instructorId = req.user.userId;
+
+
+    const lesson = await prisma.courseContent.findUnique({
+      where: { id: parseInt(lessonId) },
+      include: { Courses: true } 
+    });
+
+    if (!lesson) {
+      return res.status(404).json({ message: "Lesson not found." });
+    }
+
+
+    if (lesson.course_id.toString() !== id.toString()) {
+      return res.status(400).json({ message: "Lesson does not belong to this course." });
+    }
+
+
+    if (lesson.Courses.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    const updatedLesson = await prisma.courseContent.update({
+      where: { id: parseInt(lessonId) },
+      data: {
+        title: title !== undefined ? title : lesson.title,
+        is_preview: is_preview !== undefined ? is_preview : lesson.is_preview,
+        video_url: video_url !== undefined ? video_url : lesson.video_url,
+        note_content: note_content !== undefined ? note_content : lesson.note_content
+      }
+    });
+
+    res.json(updatedLesson);
+
+  } catch (error) {
+    console.error("Error updating lesson:", error);
+    res.status(500).json({ message: "Server Error updating lesson" });
+  }
+};
+
+// ==========================================
+// 12. DELETE LESSON
+// ==========================================
+exports.deleteLesson = async (req, res) => {
+  try {
+    const { id, lessonId } = req.params;
+    const instructorId = req.user.userId;
+
+
+    const lesson = await prisma.courseContent.findUnique({
+      where: { id: parseInt(lessonId) },
+      include: { Courses: true }
+    });
+
+    if (!lesson) {
+      return res.status(404).json({ message: "Lesson not found." });
+    }
+
+    if (lesson.course_id.toString() !== id.toString()) {
+      return res.status(400).json({ message: "Lesson mismatch course." });
+    }
+
+    if (lesson.Courses.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    await prisma.courseContent.delete({
+      where: { id: parseInt(lessonId) }
+    });
+
+    res.json({ message: "Lesson deleted successfully" });
+
+  } catch (error) {
+    console.error("Error deleting lesson:", error);
+    res.status(500).json({ message: "Server Error deleting lesson" });
+  }
+};
+
+// ==========================================
+// 13. UPDATE QUIZ (Manage Questions & Options)
+// ==========================================
+exports.updateLessonQuiz = async (req, res) => {
+  try {
+    const { id, lessonId } = req.params;
+    const { questions } = req.body;
+    const instructorId = req.user.userId;
+
+
+    const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
+    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    let assessment = await prisma.assessments.findFirst({
+      where: { content_id: parseInt(lessonId) }
+    });
+
+    if (!assessment) {
+      assessment = await prisma.assessments.create({
+        data: {
+          content_id: parseInt(lessonId),
+          title: "Lesson Quiz"
+        }
+      });
+    }
+
+    // 3. Using Transaction for clean update (deleting old ones and creating new ones)
+    await prisma.$transaction(async (tx) => {
+      // a) Delete all previous questions of this test (options will cascade automatically)
+      await tx.assessmentQuestions.deleteMany({
+        where: { assessment_id: assessment.id }
+      });
+
+      // b) Creating new questions and their options
+      for (const q of questions) {
+        const newQuestion = await tx.assessmentQuestions.create({
+          data: {
+            assessment_id: assessment.id,
+            question_text: q.question_text,
+            question_type: q.question_type 
+          }
+        });
+
+        // C) Creating options for each question
+        if (q.options && q.options.length > 0) {
+          await tx.assessmentOptions.createMany({
+            data: q.options.map(opt => ({
+              question_id: newQuestion.id,
+              option_text: opt.option_text,
+              is_correct: opt.is_correct
+            }))
+          });
+        }
+      }
+    });
+
+    res.json({ message: "Quiz updated successfully" });
+
+  } catch (error) {
+    console.error("Error updating quiz:", error);
+    res.status(500).json({ message: "Server Error updating quiz" });
+  }
+};
+
+// ==========================================
+// 14. GET QUIZ (Load Questions)
+// ==========================================
+exports.getLessonQuiz = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+
+    const assessment = await prisma.assessments.findFirst({
+      where: { content_id: parseInt(lessonId) },
+      include: {
+        AssessmentQuestions: {
+          include: { AssessmentOptions: true }
+        }
+      }
+    });
+
+    if (!assessment) {
+      return res.json({ questions: [] });
+    }
+
+    res.json({ questions: assessment.AssessmentQuestions });
+
+  } catch (error) {
+    console.error("Error fetching quiz:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
