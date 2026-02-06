@@ -67,7 +67,7 @@ const subscriptionController = {
         where: { user_id: userId },
         include: {
           SubscriptionPlans: true,
-          Courses: true, 
+          Courses: true,
         },
         orderBy: { created_at: "desc" },
       });
@@ -140,6 +140,35 @@ const subscriptionController = {
       });
     } catch (error) {
       console.error("Subscription Error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  cancelSubscription: async (req, res) => {
+    try {
+      const userId = BigInt(req.user.userId);
+
+      const updated = await prisma.subscriptions.updateMany({
+        where: {
+          user_id: userId,
+          status: "active",
+        },
+        data: {
+          status: "cancelled",
+        },
+      });
+
+      if (updated.count === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "No active subscription found" });
+      }
+
+      res.json({
+        success: true,
+        message: "Subscription cancelled successfully",
+      });
+    } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
   },

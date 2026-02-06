@@ -7,5 +7,6 @@ router.get("/overview", authMiddleware, subController.getOverview);
 router.get("/plans", subController.getPlans);
 router.get("/history", authMiddleware, subController.getHistory);
 router.post("/subscribe", authMiddleware, subController.subscribe);
+router.post('/cancel', authMiddleware, subController.cancelSubscription);
 
 module.exports = router;
