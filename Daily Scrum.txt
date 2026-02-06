@@ -465,10 +465,12 @@ Ali
 Aleks
 
 1. Done / not done since last scrum:
-
+Added "Add to wishlist" to course details
+Modified student controller for wishlist
+Modified routes to allow for wishlist
 
 2. To do until next Scrum:
-
+Testing & Bug fixes
 
 3. Need assistance / figure things out
 
