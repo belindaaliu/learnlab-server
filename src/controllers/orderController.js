@@ -4,38 +4,54 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 exports.createPaymentIntent = async (req, res) => {
   try {
     const { cartItems, planId, checkoutType } = req.body;
-    
+
     const userId = req.user?.userId || req.user?.id;
-    
+
     if (!userId) {
       return res.status(401).json({ message: "User not authenticated" });
     }
 
     let amount = 0;
-    let metadata = { 
-      userId: userId.toString(), 
-      type: checkoutType 
+    let metadata = {
+      userId: userId.toString(),
+      type: checkoutType,
     };
 
     if (checkoutType === "cart") {
       if (!cartItems || cartItems.length === 0) {
         return res.status(400).json({ message: "Cart is empty" });
       }
-      
+
       const courseIds = cartItems.map((item) => BigInt(item.id));
       const courses = await prisma.courses.findMany({
         where: { id: { in: courseIds } },
       });
-      
+
       amount = courses.reduce((sum, c) => sum + Number(c.price), 0);
       metadata.courseIds = courseIds.join(",");
     } else if (checkoutType === "subscription") {
+      // Check for an existing active subscription
+      const existingSub = await prisma.subscriptions.findFirst({
+        where: {
+          user_id: BigInt(userId),
+          status: "active",
+          end_date: { gte: new Date() }, 
+        },
+      });
+
+      if (existingSub) {
+        return res.status(400).json({
+          message:
+            "You already have an active subscription. Please manage your existing plan.",
+        });
+      }
+
       const plan = await prisma.subscriptionPlans.findUnique({
         where: { id: BigInt(planId) },
       });
-      
+
       if (!plan) return res.status(404).json({ message: "Plan not found" });
-      
+
       amount = Number(plan.price);
       metadata.planId = planId.toString();
     } else {
@@ -43,15 +59,15 @@ exports.createPaymentIntent = async (req, res) => {
     }
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), 
+      amount: Math.round(amount * 100),
       currency: "cad",
       metadata: metadata,
       automatic_payment_methods: { enabled: true },
     });
 
-    res.json({ 
+    res.json({
       clientSecret: paymentIntent.client_secret,
-      totalAmount: Number(amount) 
+      totalAmount: Number(amount),
     });
   } catch (error) {
     console.error("Stripe Intent Error:", error);
@@ -67,7 +83,7 @@ exports.stripeWebhook = async (req, res) => {
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET
+      process.env.STRIPE_WEBHOOK_SECRET,
     );
   } catch (err) {
     console.error(`Webhook Error: ${err.message}`);
@@ -84,10 +100,15 @@ exports.stripeWebhook = async (req, res) => {
           userId,
           courseIds.split(","),
           intent.id,
-          intent.amount / 100
+          intent.amount / 100,
         );
       } else if (type === "subscription") {
-        await exports.fulfillSubscription(userId, planId, intent.id, intent.amount / 100);
+        await exports.fulfillSubscription(
+          userId,
+          planId,
+          intent.id,
+          intent.amount / 100,
+        );
       }
     } catch (fulfillmentError) {
       console.error("Fulfillment Error:", fulfillmentError);
@@ -97,7 +118,7 @@ exports.stripeWebhook = async (req, res) => {
   res.status(200).send({ received: true });
 };
 
- // Course Fulfillment
+// Course Fulfillment
 exports.fulfillOrder = async (userId, courseIds, transactionId, amount) => {
   const uId = BigInt(userId);
 
@@ -138,7 +159,7 @@ exports.fulfillSubscription = async (userId, planId, transactionId, amount) => {
 
   return await prisma.$transaction(async (tx) => {
     const plan = await tx.subscriptionPlans.findUnique({
-      where: { id: pId }
+      where: { id: pId },
     });
 
     if (!plan) throw new Error("Plan not found during fulfillment");
@@ -162,11 +183,11 @@ exports.fulfillSubscription = async (userId, planId, transactionId, amount) => {
         user_id: uId,
         subscription_plan_id: pId,
         amount: amount,
-        currency: 'CAD',
-        method: 'stripe',
-        status: 'paid',
-        transaction_id: transactionId
-      }
+        currency: "CAD",
+        method: "stripe",
+        status: "paid",
+        transaction_id: transactionId,
+      },
     });
   });
 };

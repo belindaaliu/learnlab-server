@@ -434,10 +434,14 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Fixed error on subscription and cart page on the live app.
+- fixed add to cart logic for logged in user and guest
+- Replaced alerts with modals and fixed logic for subscription plan
+- Add to cart link added to courselist and course detail pages
 
 2. To do until next Scrum:
-
+- Work on Instructor features in admin panel
+- Complete logic for certificate generation
 
 3. Need assistance / figure things out
 
