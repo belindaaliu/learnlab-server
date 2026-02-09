@@ -64,14 +64,14 @@ model Certificates {
 model CourseContent {
   id               BigInt             @id @default(autoincrement())
   course_id        BigInt
-  parent_id        BigInt?           
+  parent_id        BigInt?
   title            String             @db.VarChar(255)
-  type             CourseContent_type // video, assessment, section, note
-  is_preview       Boolean            @default(false)
+  type             CourseContent_type
   video_url        String?            @db.VarChar(500)
   note_content     String?            @db.Text
   duration_seconds Int?
   order_index      Int
+  is_preview       Boolean            @default(false)
   Assessments      Assessments[]
   Courses          Courses            @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_course")
   ParentSection    CourseContent?     @relation("CourseContentToCourseContent", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_content_parent")
@@ -106,11 +106,14 @@ model Courses {
   enrollments_count Int?               @default(0)
   created_at        DateTime?          @default(now()) @db.Timestamp(0)
   updated_at        DateTime?          @default(now()) @db.Timestamp(0)
+  language          String?            @db.VarChar(100)
+  plan_id           BigInt?
   Certificates      Certificates[]
   CourseContent     CourseContent[]
   CourseTags        CourseTags[]
   Categories        Categories         @relation(fields: [category_id], references: [id], onUpdate: NoAction, map: "fk_course_category")
   Users             Users              @relation(fields: [instructor_id], references: [id], onUpdate: NoAction, map: "fk_course_instructor")
+  SubscriptionPlans SubscriptionPlans? @relation(fields: [plan_id], references: [id], onUpdate: NoAction, map: "fk_course_plan")
   Enrollments       Enrollments[]
   Payments          Payments[]
   Reviews           Reviews[]
@@ -119,6 +122,7 @@ model Courses {
 
   @@index([category_id], map: "fk_course_category")
   @@index([instructor_id], map: "fk_course_instructor")
+  @@index([plan_id], map: "fk_course_plan")
 }
 
 model Enrollments {
@@ -151,8 +155,8 @@ model Messages {
   sender_id                         BigInt
   receiver_id                       BigInt
   content                           String    @db.Text
-  is_read                           Boolean?  @default(false)
   created_at                        DateTime? @default(now()) @db.Timestamp(0)
+  is_read                           Boolean?  @default(false)
   Users_Messages_receiver_idToUsers Users     @relation("Messages_receiver_idToUsers", fields: [receiver_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_message_receiver")
   Users_Messages_sender_idToUsers   Users     @relation("Messages_sender_idToUsers", fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_message_sender")
 
@@ -259,6 +263,7 @@ model SubscriptionPlans {
   slug          String?                      @unique(map: "slug") @db.VarChar(50)
   features      Json?
   button_text   String?                      @db.VarChar(50)
+  Courses       Courses[]
   Payments      Payments[]
   Subscriptions Subscriptions[]
 }

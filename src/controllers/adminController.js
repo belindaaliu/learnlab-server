@@ -348,6 +348,9 @@ exports.getCourses = async (req, res) => {
       include: {
         Users: { select: { first_name: true, last_name: true } },
         Categories: { select: { name: true } },
+        SubscriptionPlans: {
+          select: { name: true }
+        }
       },
       orderBy: { created_at: "desc" },
     });
