@@ -1,5 +1,8 @@
 const prisma = require('../lib/prisma');
 
+
+BigInt.prototype.toJSON = function () { return this.toString() }
+
 // ==========================================
 // 1. GET ALL COURSES (List & Search)
 // ==========================================
@@ -47,11 +50,10 @@ exports.getAllCourses = async (req, res) => {
       }
     });
 
-    // Format Response (Fixing Image & Data)
+    // Format Response
     const formattedCourses = courses.map(course => ({
-      id: course.id, 
-      title: course.title,
-      price: course.price,
+      ...course, // Copy all fields (Ids represent automatically as string now)
+      price: parseFloat(course.price), // ✅ Fix Decimal to Float
       image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80", 
       category: course.Categories ? course.Categories.name : 'Uncategorized',
       instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : 'Unknown Instructor',
@@ -75,14 +77,25 @@ exports.getCourseById = async (req, res) => {
   try {
     const { id } = req.params;
     
+    const courseId = parseInt(id);
+    if (isNaN(courseId)) {
+        return res.status(400).json({ message: "Invalid Course ID" });
+    }
+    
     const course = await prisma.courses.findUnique({
-      where: { id: parseInt(id) }, 
+      where: { id: courseId }, 
       include: {
         Categories: true,
         Users: {
-          select: { first_name: true, last_name: true }
+          select: { 
+            id: true,
+            first_name: true, 
+            last_name: true, 
+            photo_url: true, 
+            headline: true, 
+            biography: true 
+          }
         },
-
         CourseContent: {
           orderBy: { order_index: 'asc' }
         }
@@ -93,11 +106,18 @@ exports.getCourseById = async (req, res) => {
       return res.status(404).json({ message: "Course not found" });
     }
 
+    // Default image if missing
     if (!course.thumbnail_url) {
         course.thumbnail_url = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
     }
 
-    res.json(course);
+    // ✅ Fix Decimal Price
+    const responseData = {
+        ...course,
+        price: parseFloat(course.price)
+    };
+
+    res.json(responseData);
 
   } catch (error) {
     console.error("🔥 Server Error:", error);
@@ -114,18 +134,23 @@ exports.getInstructorCourses = async (req, res) => {
 
     const courses = await prisma.courses.findMany({
       where: {
-        instructor_id: instructorId
+        instructor_id: BigInt(instructorId)
       },
       orderBy: {
         created_at: 'desc'
       },
       include: {
         Categories: true,
-        // We will add the number of students or statistics later.
       }
     });
 
-    res.json(courses);
+    // ✅ Fix Decimal Price
+    const serializedCourses = courses.map(course => ({
+        ...course,
+        price: parseFloat(course.price)
+    }));
+
+    res.json(serializedCourses);
   } catch (error) {
     console.error("Error fetching instructor courses:", error);
     res.status(500).json({ message: "Server Error" });
@@ -137,7 +162,8 @@ exports.getInstructorCourses = async (req, res) => {
 // ==========================================
 exports.createCourse = async (req, res) => {
   try {
-    const { title, description, price, category_id, level, thumbnail_url } = req.body;
+    // ✅ Added 'language' to destructuring
+    const { title, description, price, category_id, level, thumbnail_url, language } = req.body;
     
     const instructor_id = req.user.userId;
 
@@ -154,15 +180,18 @@ exports.createCourse = async (req, res) => {
         price: parseFloat(price),
         category_id: parseInt(category_id),
         level: level || 'beginner',
-
         thumbnail_url: (thumbnail_url && thumbnail_url.trim() !== "") ? thumbnail_url : DEFAULT_IMAGE,
-
         instructor_id: instructor_id,
+        language: language || "English",
         views: 0
       }
     });
 
-    res.status(201).json(newCourse);
+    // Return with decimal fix
+    res.status(201).json({
+        ...newCourse,
+        price: parseFloat(newCourse.price)
+    });
 
   } catch (error) {
     console.error("Error creating course:", error);
@@ -171,55 +200,25 @@ exports.createCourse = async (req, res) => {
 };
 
 // ==========================================
-// 5. DELETE COURSE
+// 5. SOFT DELETE (Move to Archive)
 // ==========================================
 exports.deleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const courseId = parseInt(id);
 
-    console.log(`🗑️ Attempting to delete course with ID: ${courseId}`);
-
-    await prisma.$transaction([
-
-      prisma.courseContent.deleteMany({
-        where: { course_id: courseId }
-      }),
-
-      prisma.enrollments.deleteMany({
-        where: { course_id: courseId }
-      }),
-
-      prisma.shoppingCart.deleteMany({
-        where: { course_id: courseId }
-      }),
-
-      prisma.userSavedCourses.deleteMany({
-        where: { course_id: courseId }
-      }),
-
-      prisma.courseTags.deleteMany({
-        where: { course_id: courseId }
-      }),
-
-      prisma.certificates.deleteMany({
-        where: { course_id: courseId }
-      }),
-
-      prisma.courses.delete({
-        where: { id: courseId }
-      })
-    ]);
-
-    console.log("✅ Course deleted successfully.");
-    res.json({ message: "Course deleted successfully" });
-
-  } catch (error) {
-    console.error("🔥 Error deleting course:", error);
-    res.status(500).json({ 
-      message: "Could not delete course.", 
-      error: error.message 
+    await prisma.courses.update({
+      where: { id: courseId },
+      data: { 
+        is_deleted: true,
+        deleted_at: new Date() // ثبت زمان حذف
+      } 
     });
+
+    res.json({ message: "Course moved to archive" });
+  } catch (error) {
+    console.error("Error archiving course:", error);
+    res.status(500).json({ message: "Could not archive course" });
   }
 };
 
@@ -229,35 +228,53 @@ exports.deleteCourse = async (req, res) => {
 exports.updateCourse = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, price, category_id, level, thumbnail_url } = req.body;
+    const { 
+      title, 
+      description, 
+      price, 
+      category_id, 
+      thumbnail_url,
+
+      requirements, 
+      target_audience, 
+      long_description, 
+      language 
+    } = req.body;
+
     const instructorId = req.user.userId;
 
-    const course = await prisma.courses.findUnique({
-      where: { id: parseInt(id) }
-    });
+    // 1. Check Ownership
+    const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
 
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
 
     if (course.instructor_id.toString() !== instructorId.toString()) {
-      return res.status(403).json({ message: "You are not authorized to edit this course." });
+      return res.status(403).json({ message: "Access denied. You are not the instructor of this course." });
     }
 
+    // 2. Update Course
     const updatedCourse = await prisma.courses.update({
       where: { id: parseInt(id) },
       data: {
-        title,
-        description,
-        price: parseFloat(price),
-        category_id: parseInt(category_id),
-        level,
-        thumbnail_url,
-        updated_at: new Date()
+        title: title || undefined,
+        description: description || undefined,
+        price: price ? parseFloat(price) : undefined,
+        category_id: category_id ? parseInt(category_id) : undefined,
+        thumbnail_url: thumbnail_url || undefined,
+        
+        requirements: requirements ? (Array.isArray(requirements) ? JSON.stringify(requirements) : requirements) : undefined,
+        target_audience: target_audience ? (Array.isArray(target_audience) ? JSON.stringify(target_audience) : target_audience) : undefined,
+        long_description: long_description || undefined,
+        language: language || undefined
       }
     });
 
-    res.json({ message: "Course updated successfully", course: updatedCourse });
+    res.json({
+        ...updatedCourse,
+        price: parseFloat(updatedCourse.price)
+    });
 
   } catch (error) {
     console.error("Error updating course:", error);
@@ -366,12 +383,10 @@ exports.createLesson = async (req, res) => {
     const { title, type, is_preview } = req.body;
     const instructorId = req.user.userId;
 
-
     const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
     if (!course || course.instructor_id.toString() !== instructorId.toString()) {
       return res.status(403).json({ message: "Access denied. You are not the instructor of this course." });
     }
-
 
     const section = await prisma.courseContent.findFirst({
       where: { 
@@ -389,7 +404,6 @@ exports.createLesson = async (req, res) => {
       orderBy: { order_index: 'desc' }
     });
     const newOrder = lastLesson ? lastLesson.order_index + 1 : 0;
-
 
     const newLesson = await prisma.courseContent.create({
       data: {
@@ -419,7 +433,6 @@ exports.updateLesson = async (req, res) => {
     const { title, is_preview, video_url, note_content } = req.body;
     const instructorId = req.user.userId;
 
-
     const lesson = await prisma.courseContent.findUnique({
       where: { id: parseInt(lessonId) },
       include: { Courses: true } 
@@ -429,11 +442,9 @@ exports.updateLesson = async (req, res) => {
       return res.status(404).json({ message: "Lesson not found." });
     }
 
-
     if (lesson.course_id.toString() !== id.toString()) {
       return res.status(400).json({ message: "Lesson does not belong to this course." });
     }
-
 
     if (lesson.Courses.instructor_id.toString() !== instructorId.toString()) {
       return res.status(403).json({ message: "Access denied." });
@@ -464,7 +475,6 @@ exports.deleteLesson = async (req, res) => {
   try {
     const { id, lessonId } = req.params;
     const instructorId = req.user.userId;
-
 
     const lesson = await prisma.courseContent.findUnique({
       where: { id: parseInt(lessonId) },
@@ -504,7 +514,6 @@ exports.updateLessonQuiz = async (req, res) => {
     const { questions } = req.body;
     const instructorId = req.user.userId;
 
-
     const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
     if (!course || course.instructor_id.toString() !== instructorId.toString()) {
       return res.status(403).json({ message: "Access denied." });
@@ -523,14 +532,12 @@ exports.updateLessonQuiz = async (req, res) => {
       });
     }
 
-    // 3. Using Transaction for clean update (deleting old ones and creating new ones)
+    // 3. Using Transaction for clean update
     await prisma.$transaction(async (tx) => {
-      // a) Delete all previous questions of this test (options will cascade automatically)
       await tx.assessmentQuestions.deleteMany({
         where: { assessment_id: assessment.id }
       });
 
-      // b) Creating new questions and their options
       for (const q of questions) {
         const newQuestion = await tx.assessmentQuestions.create({
           data: {
@@ -540,7 +547,6 @@ exports.updateLessonQuiz = async (req, res) => {
           }
         });
 
-        // C) Creating options for each question
         if (q.options && q.options.length > 0) {
           await tx.assessmentOptions.createMany({
             data: q.options.map(opt => ({
@@ -586,5 +592,181 @@ exports.getLessonQuiz = async (req, res) => {
   } catch (error) {
     console.error("Error fetching quiz:", error);
     res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// ==========================================
+// 15. GET INSTRUCTOR DASHBOARD STATS (FIXED)
+// ==========================================
+exports.getInstructorStats = async (req, res) => {
+  try {
+    const instructorId = req.user.userId;
+
+    // 1. Receive all active courses from the teacher
+    const courses = await prisma.courses.findMany({
+      where: { 
+        instructor_id: BigInt(instructorId),
+        is_deleted: false 
+      },
+      select: {
+        id: true,
+        price: true,
+        views: true,
+        _count: { select: { Enrollments: true } }
+      }
+    });
+
+    // Calculating overall statistics
+    let totalCourses = courses.length;
+    let totalStudents = 0;
+    let totalRevenue = 0;
+    let totalViews = 0;
+
+    const courseIds = courses.map(c => c.id);
+
+    courses.forEach(course => {
+      const studentCount = course._count.Enrollments;
+      const price = parseFloat(course.price);
+      totalStudents += studentCount;
+      totalViews += course.views;
+      totalRevenue += (studentCount * price);
+    });
+
+    // ---------------------------------------------------------
+    // 2. Calculating Monthly Chart Data
+    // ---------------------------------------------------------
+    
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const recentEnrollments = await prisma.enrollments.findMany({
+      where: {
+        course_id: { in: courseIds },
+        enrolled_at: { gte: sixMonthsAgo }
+      },
+      include: {
+        Courses: { select: { price: true } }
+      }
+    });
+
+    // The basic structure of the months
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const monthName = d.toLocaleString('default', { month: 'short' }); 
+      months.push({ name: monthName, revenue: 0, students: 0, rawDate: d.getMonth() });
+    }
+
+    // Filling in the data
+    recentEnrollments.forEach(enrollment => {
+
+      if (!enrollment.enrolled_at) return;
+
+
+      const date = new Date(enrollment.enrolled_at); 
+      const monthIndex = date.getMonth();
+      
+      const monthEntry = months.find(m => m.rawDate === monthIndex);
+      
+      if (monthEntry) {
+        monthEntry.students += 1;
+        monthEntry.revenue += parseFloat(enrollment.Courses.price);
+      }
+    });
+
+    const chartData = months.map(({ rawDate, ...rest }) => rest);
+
+    res.json({
+      totalCourses,
+      totalStudents,
+      totalRevenue,
+      totalViews,
+      chartData
+    });
+
+  } catch (error) {
+    console.error("Error fetching stats:", error);
+    res.status(500).json({ message: "Server Error fetching stats" });
+  }
+};
+
+// ==========================================
+// 16. GET ARCHIVED COURSES
+// ==========================================
+exports.getArchivedCourses = async (req, res) => {
+  try {
+    const instructorId = req.user.userId;
+    const courses = await prisma.courses.findMany({
+      where: {
+        instructor_id: BigInt(instructorId),
+        is_deleted: true
+      },
+      orderBy: { deleted_at: 'desc' },
+      include: { Categories: true }
+    });
+
+    const formatted = courses.map(c => {
+
+      const deletedDate = new Date(c.deleted_at);
+        const expireDate = new Date(deletedDate.setDate(deletedDate.getDate() + 30));
+        const daysLeft = Math.ceil((expireDate - new Date()) / (1000 * 60 * 60 * 24));
+
+        return {
+            ...c,
+            price: parseFloat(c.price),
+            daysLeft: daysLeft > 0 ? daysLeft : 0
+        };
+    });
+
+    res.json(formatted);
+  } catch (error) {
+    console.error("Error fetching archived courses:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// ==========================================
+// 17. RESTORE COURSE (Recovery)
+// ==========================================
+exports.restoreCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.courses.update({
+      where: { id: parseInt(id) },
+      data: { 
+        is_deleted: false,
+        deleted_at: null 
+      }
+    });
+    res.json({ message: "Course restored successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error restoring course" });
+  }
+};
+
+// ==========================================
+// 18. PERMANENT DELETE (Hard Delete)
+// ==========================================
+exports.permanentDeleteCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const courseId = parseInt(id);
+
+    // Actual removal of all dependencies (transaction)
+    await prisma.$transaction([
+      prisma.courseContent.deleteMany({ where: { course_id: courseId } }),
+      prisma.enrollments.deleteMany({ where: { course_id: courseId } }),
+      prisma.shoppingCart.deleteMany({ where: { course_id: courseId } }),
+      prisma.userSavedCourses.deleteMany({ where: { course_id: courseId } }),
+      prisma.courseTags.deleteMany({ where: { course_id: courseId } }),
+      prisma.certificates.deleteMany({ where: { course_id: courseId } }),
+      prisma.courses.delete({ where: { id: courseId } }) // Final elimination
+    ]);
+
+    res.json({ message: "Course permanently deleted" });
+  } catch (error) {
+    console.error("Error deleting course permanently:", error);
+    res.status(500).json({ message: "Could not delete course" });
   }
 };
