@@ -108,6 +108,11 @@ model Courses {
   updated_at        DateTime?          @default(now()) @db.Timestamp(0)
   language          String?            @db.VarChar(100)
   plan_id           BigInt?
+  deleted_at        DateTime?
+  is_deleted        Boolean            @default(false)
+  long_description  String?            @db.Text
+  requirements      String?            @db.Text
+  target_audience   String?            @db.Text
   Certificates      Certificates[]
   CourseContent     CourseContent[]
   CourseTags        CourseTags[]
@@ -119,11 +124,6 @@ model Courses {
   Reviews           Reviews[]
   ShoppingCart      ShoppingCart[]
   UserSavedCourses  UserSavedCourses[]
-  is_deleted        Boolean            @default(false)
-  deleted_at        DateTime?
-  requirements      String? @db.Text
-  target_audience   String? @db.Text
-  long_description  String? @db.Text
 
   @@index([category_id], map: "fk_course_category")
   @@index([instructor_id], map: "fk_course_instructor")
