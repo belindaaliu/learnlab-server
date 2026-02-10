@@ -418,6 +418,132 @@ const enrollCourse = async (req, res) => {
   }
 };
 
+// ---------------- GET ENROLLED COURSES WITH NEXT CONTENT FOR DASHBOARD ----------------
+const getEnrolledCoursesWithNextContent = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+
+    // Get enrolled courses, ordered by enrollment date (newest first)
+    const enrollments = await prisma.enrollments.findMany({
+      where: { user_id: userId },
+      include: {
+        Courses: {
+          include: {
+            Users: {
+              select: {
+                first_name: true,
+                last_name: true,
+                photo_url: true
+              }
+            },
+            CourseContent: {
+              where: {
+                type: { not: "section" } // Only actual content, not sections
+              },
+              orderBy: { order_index: "asc" },
+              select: {
+                id: true,
+                title: true,
+                type: true,
+                duration_seconds: true,
+                order_index: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { enrolled_at: 'desc' } // Order by enrollment date, newest first
+    });
+
+    // Process each enrolled course
+    const coursesWithProgress = await Promise.all(
+      enrollments.map(async (enrollment) => {
+        const course = enrollment.Courses;
+        const contents = course.CourseContent;
+        
+        // Get completed lessons for this course
+        const completedLessons = await prisma.lessonProgress.findMany({
+          where: {
+            user_id: userId,
+            is_completed: true,
+            content_id: { in: contents.map(c => c.id) }
+          },
+          select: {
+            content_id: true
+          }
+        });
+
+        const completedIds = completedLessons.map(p => Number(p.content_id));
+        const progress = contents.length > 0 
+          ? Math.round((completedIds.length / contents.length) * 100)
+          : 0;
+
+        // Skip completed courses (progress = 100%)
+        if (progress === 100) {
+          return null; // Will filter these out later
+        }
+
+        // Find next content to complete
+        let nextContent = null;
+        for (const content of contents) {
+          if (!completedIds.includes(Number(content.id))) {
+            nextContent = {
+              id: content.id,
+              title: content.title,
+              type: content.type, // "lecture", "note", "quiz", etc.
+              order: content.order_index,
+              duration: content.duration_seconds ? Math.round(content.duration_seconds / 60) : null // Convert to minutes
+            };
+            break;
+          }
+        }
+
+        // If all completed (shouldn't happen since we filtered progress=100, but just in case)
+        if (!nextContent && contents.length > 0) {
+          nextContent = {
+            id: contents[0].id,
+            title: contents[0].title,
+            type: contents[0].type,
+            order: contents[0].order_index,
+            duration: contents[0].duration_seconds ? Math.round(contents[0].duration_seconds / 60) : null
+          };
+        }
+
+        return {
+          id: course.id,
+          title: course.title,
+          thumbnail_url: course.thumbnail_url,
+          instructor: course.Users
+            ? {
+                name: `${course.Users.first_name} ${course.Users.last_name}`,
+                photo: course.Users.photo_url
+              }
+            : null,
+          progress,
+          completedContent: completedIds.length,
+          totalContent: contents.length,
+          nextContent,
+          enrolled_at: enrollment.enrolled_at // Include enrollment date
+        };
+      })
+    );
+
+    // Filter out null values (completed courses) and get only last 3 uncompleted courses
+    const uncompletedCourses = coursesWithProgress
+      .filter(course => course !== null) // Remove completed courses
+      .slice(0, 3); // Get only last 3 uncompleted courses
+
+    res.json(uncompletedCourses);
+
+  } catch (error) {
+    console.error("Error fetching enrolled courses with next content:", error);
+    res.status(500).json({ 
+      message: "Server error",
+      error: error.message 
+    });
+  }
+};
+
 // ---------------- EXPORT ALL CONTROLLERS ----------------
 module.exports = {
   getCurrentUser,
@@ -428,4 +554,5 @@ module.exports = {
   addCourseToWishlist,
   removeFromWishlist,
   enrollCourse,
+  getEnrolledCoursesWithNextContent
 };

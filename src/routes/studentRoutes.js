@@ -10,6 +10,7 @@ const {
   addCourseToWishlist,
   removeFromWishlist,
   enrollCourse,
+  getEnrolledCoursesWithNextContent
 } = require("../controllers/Student/studentController");
 const { getRecommendations } = require("../controllers/Student/recommendationController");
 
@@ -40,5 +41,8 @@ router.get("/:id/recommendations", getRecommendations);
 // CERTIFICATES
 router.get('/certificates', authMiddleware, certController.getStudentCertificates);
 router.get('/certificates/:courseId/download', authMiddleware, certController.downloadCertificate);
+
+// Add this route
+router.get('/:id/enrolled-courses-next', getEnrolledCoursesWithNextContent);
 
 module.exports = router;

@@ -694,7 +694,8 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
-
+- student dashboard, student layout and my learning updated and some bugs related to redirecting to pages fixed in frontend.
+-getEnrolledCoursesWithNextContent added in backend to have the next learning contents for 3 courses in student dashboard. 
 
 2. To do until next Scrum:
 
