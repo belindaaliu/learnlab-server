@@ -50,25 +50,66 @@ const getPurchasedCourses = async (req, res) => {
                 first_name: true,
                 last_name: true
               }
+            },
+            // Include CourseContent to count total lessons
+            CourseContent: {
+              where: {
+                type: { not: "section" } // Only count actual lessons, not sections
+              },
+              select: {
+                id: true
+              }
             }
           }
         }
       }
     });
 
-    const courses = enrollments.map((e) => ({
-      id: e.Courses.id,
-      title: e.Courses.title,
-      thumbnail_url: e.Courses.thumbnail_url,
-      price: e.Courses.price,
-      instructor: e.Courses.Users
-        ? `${e.Courses.Users.first_name} ${e.Courses.Users.last_name}`
-        : "Unknown Instructor",
-      total_lessons: e.Courses.total_lessons,
-      completed_lessons: e.Courses.completed_lessons,
-    }));
+    // Get completed lessons count for each course
+    const coursesWithProgress = await Promise.all(
+      enrollments.map(async (e) => {
+        const course = e.Courses;
+        
+        // Count completed lessons for this user in this course
+        const completedLessons = await prisma.lessonProgress.count({
+          where: {
+            user_id: userId,
+            is_completed: true,
+            CourseContent: {
+              course_id: course.id,
+              type: { not: "section" } // Only count non-section content
+            }
+          }
+        });
 
-    res.json(courses);
+        // Count total lessons (non-section content)
+        const totalLessons = course.CourseContent.length;
+
+        return {
+          id: course.id,
+          title: course.title,
+          thumbnail_url: course.thumbnail_url,
+          price: course.price,
+          instructor: course.Users
+            ? `${course.Users.first_name} ${course.Users.last_name}`
+            : "Unknown Instructor",
+          total_lessons: totalLessons,
+          completed_lessons: completedLessons,
+          // Add additional fields for frontend
+          description: course.description,
+          level: course.level,
+          rating: 4.5, // You might want to calculate this from Reviews
+          reviews: course.views || 0,
+          // Calculate duration if available in CourseContent
+          duration: course.CourseContent.reduce((total, content) => {
+            return total + (content.duration_seconds || 0);
+          }, 0) / 60, // Convert to minutes
+          category: course.category_id // You might want to include category name
+        };
+      })
+    );
+
+    res.json(coursesWithProgress);
 
   } catch (error) {
     console.error("Error fetching purchased courses:", error);

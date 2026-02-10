@@ -336,29 +336,44 @@ const submitCourseReview = async (req, res) => {
 };
 
 
-// GET next uncompleted lesson
+// GET next uncompleted lesson (IMPROVED VERSION)
 const getNextLesson = async (req, res) => {
   try {
     const userId = Number(req.user.userId);
     const courseId = Number(req.params.courseId);
 
-    // Get all video lessons ordered
+    // Get all non-section lessons ordered
     const lessons = await prisma.courseContent.findMany({
-      where: { course_id: courseId },
+      where: { 
+        course_id: BigInt(courseId),
+        type: { not: "section" }
+      },
       orderBy: { order_index: "asc" }
     });
 
     // Get completed lessons for this user
     const progress = await prisma.lessonProgress.findMany({
-      where: { user_id: userId }
+      where: { 
+        user_id: BigInt(userId),
+        CourseContent: {
+          course_id: BigInt(courseId)
+        }
+      }
     });
 
     const completedIds = progress
       .filter(p => p.is_completed)
-      .map(p => p.content_id);
+      .map(p => Number(p.content_id));
+
+    // Debug: log what we found
+    console.log("Total lessons:", lessons.length);
+    console.log("Completed lesson IDs:", completedIds);
+    console.log("All lessons:", lessons.map(l => ({id: l.id, title: l.title, type: l.type, order: l.order_index})));
 
     // Find first uncompleted lesson
-    const nextLesson = lessons.find(l => !completedIds.includes(l.id));
+    const nextLesson = lessons.find(l => !completedIds.includes(Number(l.id)));
+
+    console.log("Next lesson found:", nextLesson ? {id: nextLesson.id, title: nextLesson.title, type: nextLesson.type} : "None");
 
     res.json(nextLesson || lessons[0]); // fallback to first lesson
   } catch (error) {
@@ -483,6 +498,60 @@ const initializeCourseProgress = async (req, res) => {
   }
 };
 
+// =======================
+// GET FIRST INCOMPLETE LESSON
+// =======================
+const getFirstIncompleteLesson = async (req, res) => {
+  try {
+    const userId = Number(req.user.userId);
+    const courseId = Number(req.params.courseId);
+
+    // Get all non-section lessons ordered
+    const lessons = await prisma.courseContent.findMany({
+      where: { 
+        course_id: BigInt(courseId),
+        type: { not: "section" }
+      },
+      orderBy: { order_index: "asc" }
+    });
+
+    // Get completed lessons for this user
+    const completedProgress = await prisma.lessonProgress.findMany({
+      where: {
+        user_id: BigInt(userId),
+        is_completed: true,
+        CourseContent: {
+          course_id: BigInt(courseId)
+        }
+      },
+      select: {
+        content_id: true
+      }
+    });
+
+    const completedIds = completedProgress.map(p => Number(p.content_id));
+    
+    // Find first incomplete lesson
+    const firstIncomplete = lessons.find(lesson => !completedIds.includes(Number(lesson.id)));
+    
+    // If all lessons are completed, return first lesson
+    const lessonToReturn = firstIncomplete || lessons[0];
+
+    if (!lessonToReturn) {
+      return res.status(404).json({ message: "No lessons found in this course" });
+    }
+
+    res.json({
+      lessonId: lessonToReturn.id,
+      courseId: courseId
+    });
+
+  } catch (error) {
+    console.error("Error getting first incomplete lesson:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 
 
 
@@ -497,5 +566,6 @@ module.exports = {
   getNextLesson,
   markLessonIncomplete,
   getCompletedLessonIds,
-  initializeCourseProgress
+  initializeCourseProgress,
+  getFirstIncompleteLesson
 };

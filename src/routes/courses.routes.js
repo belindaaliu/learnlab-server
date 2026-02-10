@@ -58,4 +58,10 @@ router.get('/:id/lessons/:lessonId/quiz', authMiddleware, courseController.getLe
 router.get('/:lessonId/quiz', authMiddleware, courseController.getLessonQuiz);
 router.put('/:id/lessons/:lessonId/quiz', authMiddleware, courseController.updateLessonQuiz);
 
+// Reorder lessons
+router.post("/:id/reorder-lessons", authMiddleware, courseController.reorderLessons);
+
+// Fix order index
+router.post("/:id/fix-order", authMiddleware, courseController.fixCourseOrderIndex);
+
 module.exports = router;
