@@ -6,7 +6,10 @@ const {
   getLessonById,
   markLessonComplete,
   submitCourseReview,
-  getNextLesson
+  getNextLesson,
+  markLessonIncomplete,
+  getCompletedLessonIds,
+  initializeCourseProgress
 } = require("../controllers/coursePlayerController");
 
 const { authMiddleware } = require("../middleware/authMiddleware");
@@ -29,5 +32,14 @@ router.post("/:courseId/review", authMiddleware, submitCourseReview);
 
 // GET next uncompleted lesson
 router.get("/:courseId/next", authMiddleware, getNextLesson);
+
+// GET completed lesson IDs
+router.get("/:courseId/completed", authMiddleware, getCompletedLessonIds);
+
+// Mark lesson incomplete
+router.delete("/:courseId/lessons/:lessonId/complete", authMiddleware, markLessonIncomplete);
+
+// Initialize course progress
+router.post("/:courseId/initialize-progress", authMiddleware, initializeCourseProgress);
 
 module.exports = router;
