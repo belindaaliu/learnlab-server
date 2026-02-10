@@ -12,7 +12,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const coursePlayerRoutes = require("./routes/coursePlayerRoutes");
 const uploadRoutes = require('./routes/upload.routes');
 const userRoutes = require('./routes/userRoutes');
-
+const categoryRoutes = require('./routes/categoriesRoutes');
 
 const app = express();
 
@@ -51,5 +51,6 @@ app.use("/api/course-player", coursePlayerRoutes);
 
 app.use('/api/users', userRoutes);
 
+app.use('/api/categories', categoryRoutes);
 
 module.exports = app;

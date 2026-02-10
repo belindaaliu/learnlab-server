@@ -481,10 +481,10 @@ Testing & Bug fixes
 Samira
 
 1. Done / not done since last scrum:
-
+- profile edit and avatar photo edit done for instructoor.
 
 2. To do until next Scrum:
-
+- having notes, videos in course player page 
 
 
 3. Need assistance / figure things out
@@ -638,10 +638,11 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
-
+- Course player page modified to show the notes, videos and Quizes.
+- complete course/incomplete course checkbox added to see the progress.
 
 2. To do until next Scrum:
-
+- having quizies in course player page.
 
 
 3. Need assistance / figure things out
@@ -651,10 +652,16 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Modified plan features.
+- Added badges to courses and implemented state-driven access to courses so students
+see the subscription plan for a course.
+- Added cart logic to Homepage and student dashboard.
+- Fixed cart merge between guest and registered account.
 
 2. To do until next Scrum:
-
+- Complete subscription plan management by admin
+- Work on Instructor features in admin panel
+- Complete logic for certificate generation
 
 3. Need assistance / figure things out
 
@@ -663,10 +670,14 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Implemented Nested Lesson Structure (Video, Note, Quiz) within sections.
+- Integrated AWS S3 Video Upload with progress bar (Resolved SDK v2/v3 conflicts & ACL issues).
+- Built Quiz Manager & Note Editor modals in the frontend.
+- Updated Database Schema (is_preview) & Backend APIs for transactional Quiz updates.
 
 2. To do until next Scrum:
-
+- Making the course details page dynamic
+- Fixing course editing problems
 
 3. Need assistance / figure things out
 
