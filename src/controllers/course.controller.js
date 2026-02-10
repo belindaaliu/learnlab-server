@@ -223,7 +223,7 @@ exports.getCourseById = async (req, res) => {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    const planName = course.SubscriptionPlans?.name || "Starter";
+    const planName = course.SubscriptionPlans?.name;
 
     res.json({
       ...course,
