@@ -136,37 +136,38 @@ exports.getAllCourses = async (req, res) => {
     if (search) {
       where.OR = [
         { title: { contains: search } },
-        { description: { contains: search } }
+        { description: { contains: search } },
       ];
     }
 
     // Category Filter
-    if (category && category !== 'All') {
+    if (category && category !== "All") {
       where.Categories = {
-        name: category
+        name: category,
       };
     }
 
     // Sorting Logic
-    let orderBy = { created_at: 'desc' }; // Default: Newest first
-    
-    if (sort === 'price_asc') orderBy = { price: 'asc' };
-    if (sort === 'price_desc') orderBy = { price: 'desc' };
-    if (sort === 'rating_desc') orderBy = { views: 'desc' };
+    let orderBy = { created_at: "desc" }; // Default: Newest first
+
+    if (sort === "price_asc") orderBy = { price: "asc" };
+    if (sort === "price_desc") orderBy = { price: "desc" };
+    if (sort === "rating_desc") orderBy = { views: "desc" };
 
     // Execute Query
     const courses = await prisma.courses.findMany({
       where,
       orderBy,
       include: {
-        Categories: true, 
-        Users: {          
+        Categories: true,
+        SubscriptionPlans: true,
+        Users: {
           select: {
             first_name: true,
-            last_name: true
-          }
-        }
-      }
+            last_name: true,
+          },
+        },
+      },
     });
 
     // Format Response
@@ -182,16 +183,12 @@ exports.getAllCourses = async (req, res) => {
     }));
 
     res.json(formattedCourses);
-
   } catch (error) {
     console.error("Error fetching courses:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
 
-// ==========================================
-// 2. GET SINGLE COURSE (Details Page)
-// ==========================================
 exports.getCourseById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -215,32 +212,31 @@ exports.getCourseById = async (req, res) => {
             biography: true 
           }
         },
+        SubscriptionPlans: true, 
         CourseContent: {
-          orderBy: { order_index: 'asc' }
-        }
-      }
+          orderBy: { order_index: "asc" },
+        },
+      },
     });
 
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    // Default image if missing
-    if (!course.thumbnail_url) {
-        course.thumbnail_url = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
-    }
+    const planName = course.SubscriptionPlans?.name || "Standard";
 
-    // ✅ Fix Decimal Price
-    const responseData = {
-        ...course,
-        price: parseFloat(course.price)
-    };
-
-    res.json(responseData);
+    res.json({
+      ...course,
+      required_plan_name: planName,
+      thumbnail_url: course.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80"
+    });
 
   } catch (error) {
-    console.error("🔥 Server Error:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("🔥 DATABASE ERROR:", error);
+    res.status(500).json({ 
+      message: "Internal Server Error", 
+      details: error.message 
+    });
   }
 };
 
@@ -257,7 +253,7 @@ exports.getInstructorCourses = async (req, res) => {
         is_deleted: false // ✅ Ensure logic is consistent
       },
       orderBy: {
-        created_at: 'desc'
+        created_at: "desc",
       },
       include: {
         Categories: true,
@@ -286,10 +282,13 @@ exports.createCourse = async (req, res) => {
     
     const instructor_id = req.user.userId;
 
-    const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
+    const DEFAULT_IMAGE =
+      "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
 
     if (!title || !price || !category_id) {
-      return res.status(400).json({ message: "Please fill in all required fields." });
+      return res
+        .status(400)
+        .json({ message: "Please fill in all required fields." });
     }
 
     const newCourse = await prisma.courses.create({
@@ -418,10 +417,13 @@ exports.createSection = async (req, res) => {
     const instructorId = req.user.userId;
 
     const course = await prisma.courses.findUnique({
-      where: { id: parseInt(id) }
+      where: { id: parseInt(id) },
     });
 
-    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+    if (
+      !course ||
+      course.instructor_id.toString() !== instructorId.toString()
+    ) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
@@ -443,12 +445,11 @@ exports.createSection = async (req, res) => {
         title,
         type: 'section',
         order_index: newOrderIndex,
-        parent_id: null
-      }
+        parent_id: null,
+      },
     });
 
     res.status(201).json(newSection);
-
   } catch (error) {
     console.error("Error creating section:", error);
     res.status(500).json({ message: "Server Error creating section" });
@@ -464,14 +465,19 @@ exports.updateSection = async (req, res) => {
     const { title } = req.body;
     const instructorId = req.user.userId;
 
-    const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
-    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+    const course = await prisma.courses.findUnique({
+      where: { id: parseInt(id) },
+    });
+    if (
+      !course ||
+      course.instructor_id.toString() !== instructorId.toString()
+    ) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
     const updatedSection = await prisma.courseContent.update({
       where: { id: parseInt(sectionId) },
-      data: { title }
+      data: { title },
     });
 
     res.json(updatedSection);
@@ -489,13 +495,18 @@ exports.deleteSection = async (req, res) => {
     const { id, sectionId } = req.params;
     const instructorId = req.user.userId;
 
-    const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
-    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+    const course = await prisma.courses.findUnique({
+      where: { id: parseInt(id) },
+    });
+    if (
+      !course ||
+      course.instructor_id.toString() !== instructorId.toString()
+    ) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
     await prisma.courseContent.delete({
-      where: { id: parseInt(sectionId) }
+      where: { id: parseInt(sectionId) },
     });
 
     res.json({ message: "Section deleted successfully" });
@@ -520,14 +531,16 @@ exports.createLesson = async (req, res) => {
     }
 
     const section = await prisma.courseContent.findFirst({
-      where: { 
-        id: parseInt(sectionId), 
+      where: {
+        id: parseInt(sectionId),
         course_id: parseInt(id),
-        type: 'section' 
-      }
+        type: "section",
+      },
     });
     if (!section) {
-      return res.status(404).json({ message: "Section not found in this course." });
+      return res
+        .status(404)
+        .json({ message: "Section not found in this course." });
     }
 
     const newLesson = await prisma.courseContent.create({
@@ -545,7 +558,6 @@ exports.createLesson = async (req, res) => {
     await recalculateOrderIndex(parseInt(id));
 
     res.status(201).json(newLesson);
-
   } catch (error) {
     console.error("Error creating lesson:", error);
     res.status(500).json({ message: "Server Error creating lesson" });
@@ -563,7 +575,7 @@ exports.updateLesson = async (req, res) => {
 
     const lesson = await prisma.courseContent.findUnique({
       where: { id: parseInt(lessonId) },
-      include: { Courses: true } 
+      include: { Courses: true },
     });
 
     if (!lesson) {
@@ -571,7 +583,9 @@ exports.updateLesson = async (req, res) => {
     }
 
     if (lesson.course_id.toString() !== id.toString()) {
-      return res.status(400).json({ message: "Lesson does not belong to this course." });
+      return res
+        .status(400)
+        .json({ message: "Lesson does not belong to this course." });
     }
 
     if (lesson.Courses.instructor_id.toString() !== instructorId.toString()) {
@@ -584,12 +598,12 @@ exports.updateLesson = async (req, res) => {
         title: title !== undefined ? title : lesson.title,
         is_preview: is_preview !== undefined ? is_preview : lesson.is_preview,
         video_url: video_url !== undefined ? video_url : lesson.video_url,
-        note_content: note_content !== undefined ? note_content : lesson.note_content
-      }
+        note_content:
+          note_content !== undefined ? note_content : lesson.note_content,
+      },
     });
 
     res.json(updatedLesson);
-
   } catch (error) {
     console.error("Error updating lesson:", error);
     res.status(500).json({ message: "Server Error updating lesson" });
@@ -606,7 +620,7 @@ exports.deleteLesson = async (req, res) => {
 
     const lesson = await prisma.courseContent.findUnique({
       where: { id: parseInt(lessonId) },
-      include: { Courses: true }
+      include: { Courses: true },
     });
 
     if (!lesson) {
@@ -622,14 +636,13 @@ exports.deleteLesson = async (req, res) => {
     }
 
     await prisma.courseContent.delete({
-      where: { id: parseInt(lessonId) }
+      where: { id: parseInt(lessonId) },
     });
 
     // Recalculate order_index after deletion
     await recalculateOrderIndex(parseInt(id));
 
     res.json({ message: "Lesson deleted successfully" });
-
   } catch (error) {
     console.error("Error deleting lesson:", error);
     res.status(500).json({ message: "Server Error deleting lesson" });
@@ -651,22 +664,22 @@ exports.updateLessonQuiz = async (req, res) => {
     }
 
     let assessment = await prisma.assessments.findFirst({
-      where: { content_id: parseInt(lessonId) }
+      where: { content_id: parseInt(lessonId) },
     });
 
     if (!assessment) {
       assessment = await prisma.assessments.create({
         data: {
           content_id: parseInt(lessonId),
-          title: "Lesson Quiz"
-        }
+          title: "Lesson Quiz",
+        },
       });
     }
 
     // 3. Using Transaction for clean update
     await prisma.$transaction(async (tx) => {
       await tx.assessmentQuestions.deleteMany({
-        where: { assessment_id: assessment.id }
+        where: { assessment_id: assessment.id },
       });
 
       for (const q of questions) {
@@ -674,24 +687,23 @@ exports.updateLessonQuiz = async (req, res) => {
           data: {
             assessment_id: assessment.id,
             question_text: q.question_text,
-            question_type: q.question_type 
-          }
+            question_type: q.question_type,
+          },
         });
 
         if (q.options && q.options.length > 0) {
           await tx.assessmentOptions.createMany({
-            data: q.options.map(opt => ({
+            data: q.options.map((opt) => ({
               question_id: newQuestion.id,
               option_text: opt.option_text,
-              is_correct: opt.is_correct
-            }))
+              is_correct: opt.is_correct,
+            })),
           });
         }
       }
     });
 
     res.json({ message: "Quiz updated successfully" });
-
   } catch (error) {
     console.error("Error updating quiz:", error);
     res.status(500).json({ message: "Server Error updating quiz" });
@@ -709,9 +721,9 @@ exports.getLessonQuiz = async (req, res) => {
       where: { content_id: parseInt(lessonId) },
       include: {
         AssessmentQuestions: {
-          include: { AssessmentOptions: true }
-        }
-      }
+          include: { AssessmentOptions: true },
+        },
+      },
     });
 
     if (!assessment) {
@@ -719,7 +731,6 @@ exports.getLessonQuiz = async (req, res) => {
     }
 
     res.json({ questions: assessment.AssessmentQuestions });
-
   } catch (error) {
     console.error("Error fetching quiz:", error);
     res.status(500).json({ message: "Server Error" });

@@ -116,9 +116,12 @@ model Courses {
   Reviews           Reviews[]
   ShoppingCart      ShoppingCart[]
   UserSavedCourses  UserSavedCourses[]
+  plan_id           BigInt?
+  SubscriptionPlans SubscriptionPlans? @relation(fields: [plan_id], references: [id], onUpdate: NoAction, map: "fk_course_plan")
 
   @@index([category_id], map: "fk_course_category")
   @@index([instructor_id], map: "fk_course_instructor")
+  @@index([plan_id], map: "fk_course_plan")
 }
 
 model Enrollments {
@@ -254,6 +257,7 @@ model SubscriptionPlans {
   price         Decimal         @db.Decimal(10, 2)
   duration_days Int
   description   String?         @db.Text
+  Courses       Courses[]
   Payments      Payments[]
   Subscriptions Subscriptions[]
 }
