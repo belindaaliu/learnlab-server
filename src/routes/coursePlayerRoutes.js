@@ -9,7 +9,8 @@ const {
   getNextLesson,
   markLessonIncomplete,
   getCompletedLessonIds,
-  initializeCourseProgress
+  initializeCourseProgress,
+  getFirstIncompleteLesson
 } = require("../controllers/coursePlayerController");
 
 const { authMiddleware } = require("../middleware/authMiddleware");
@@ -41,5 +42,8 @@ router.delete("/:courseId/lessons/:lessonId/complete", authMiddleware, markLesso
 
 // Initialize course progress
 router.post("/:courseId/initialize-progress", authMiddleware, initializeCourseProgress);
+
+// Get first incomplete lesson
+router.get("/:courseId/first-incomplete", authMiddleware, getFirstIncompleteLesson);
 
 module.exports = router;

@@ -2,6 +2,124 @@ const prisma = require('../lib/prisma');
 
 BigInt.prototype.toJSON = function () { return this.toString() }
 
+// Add this after line 3 (BigInt.prototype.toJSON = function () ...)
+const recalculateOrderIndex = async (courseId) => {
+  try {
+    console.log(` Recalculating order_index for course ${courseId}`);
+    
+    // First, get all sections (parent items) ordered by current order_index
+    const sections = await prisma.courseContent.findMany({
+      where: { 
+        course_id: BigInt(courseId),
+        type: 'section',
+        parent_id: null
+      },
+      orderBy: [
+        { order_index: 'asc' },
+        { id: 'asc' }
+      ]
+    });
+
+    console.log(`📁 Found ${sections.length} sections`);
+    
+    let globalOrderIndex = 0;
+    const updatePromises = [];
+
+    // 1. Update sections with sequential order_index
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      console.log(` Section ${i}: "${section.title}" (ID: ${section.id}) → order ${globalOrderIndex}`);
+      
+      updatePromises.push(
+        prisma.courseContent.update({
+          where: { id: section.id },
+          data: { order_index: globalOrderIndex }
+        })
+      );
+      globalOrderIndex++;
+    }
+
+    // 2. For each section, get its child lessons and update their order_index
+    for (const section of sections) {
+      console.log(`\n Processing child lessons for section: "${section.title}"`);
+      
+      // Get all child lessons for this section, ordered by current order_index
+      const childLessons = await prisma.courseContent.findMany({
+        where: { 
+          course_id: BigInt(courseId),
+          parent_id: section.id,
+          type: { not: 'section' }
+        },
+        orderBy: [
+          { order_index: 'asc' },
+          { id: 'asc' }
+        ]
+      });
+
+      console.log(`   Found ${childLessons.length} child lessons`);
+      
+      // Update child lessons with sequential order_index starting from current globalOrderIndex
+      for (let j = 0; j < childLessons.length; j++) {
+        const lesson = childLessons[j];
+        console.log(`    Lesson "${lesson.title}" (ID: ${lesson.id}) → order ${globalOrderIndex}`);
+        
+        updatePromises.push(
+          prisma.courseContent.update({
+            where: { id: lesson.id },
+            data: { order_index: globalOrderIndex }
+          })
+        );
+        globalOrderIndex++;
+      }
+    }
+
+    // 3. Handle standalone lessons (no parent)
+    console.log(`\n Processing standalone lessons (no parent)`);
+    const standaloneLessons = await prisma.courseContent.findMany({
+      where: { 
+        course_id: BigInt(courseId),
+        parent_id: null,
+        type: { not: 'section' }
+      },
+      orderBy: [
+        { order_index: 'asc' },
+        { id: 'asc' }
+      ]
+    });
+
+    console.log(`   Found ${standaloneLessons.length} standalone lessons`);
+    
+    for (let k = 0; k < standaloneLessons.length; k++) {
+      const lesson = standaloneLessons[k];
+      console.log(`    Standalone lesson "${lesson.title}" (ID: ${lesson.id}) → order ${globalOrderIndex}`);
+      
+      updatePromises.push(
+        prisma.courseContent.update({
+          where: { id: lesson.id },
+          data: { order_index: globalOrderIndex }
+        })
+      );
+      globalOrderIndex++;
+    }
+
+    // Execute all updates
+    await Promise.all(updatePromises);
+    
+    console.log(` Recalculated order_index for ${updatePromises.length} items in course ${courseId}`);
+    return { 
+      success: true, 
+      updated: updatePromises.length,
+      sections: sections.length,
+      lessons: updatePromises.length - sections.length
+    };
+    
+  } catch (error) {
+    console.error(" Error recalculating order_index:", error);
+    throw error;
+  }
+};
+
+
 // ==========================================
 // 1. GET ALL COURSES (List & Search)
 // ==========================================
@@ -309,12 +427,17 @@ exports.createSection = async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    const lastContent = await prisma.courseContent.findFirst({
-      where: { course_id: parseInt(id), parent_id: null },
-      orderBy: { order_index: "desc" },
+    // Find the last section to get the next order_index
+    const lastSection = await prisma.courseContent.findFirst({
+      where: { 
+        course_id: parseInt(id), 
+        type: 'section',
+        parent_id: null 
+      },
+      orderBy: { order_index: 'desc' }
     });
 
-    const newOrderIndex = lastContent ? lastContent.order_index + 1 : 0;
+    const newOrderIndex = lastSection ? lastSection.order_index + 1 : 0;
 
     const newSection = await prisma.courseContent.create({
       data: {
@@ -420,12 +543,6 @@ exports.createLesson = async (req, res) => {
         .json({ message: "Section not found in this course." });
     }
 
-    const lastLesson = await prisma.courseContent.findFirst({
-      where: { parent_id: parseInt(sectionId) },
-      orderBy: { order_index: "desc" },
-    });
-    const newOrder = lastLesson ? lastLesson.order_index + 1 : 0;
-
     const newLesson = await prisma.courseContent.create({
       data: {
         course_id: parseInt(id),
@@ -433,9 +550,12 @@ exports.createLesson = async (req, res) => {
         title,
         type: type || 'video',
         is_preview: is_preview || false,
-        order_index: newOrder,
-      },
+        order_index: 9999 // Temporary high value
+      }
     });
+
+    // Recalculate order_index for all lessons in this section
+    await recalculateOrderIndex(parseInt(id));
 
     res.status(201).json(newLesson);
   } catch (error) {
@@ -518,6 +638,9 @@ exports.deleteLesson = async (req, res) => {
     await prisma.courseContent.delete({
       where: { id: parseInt(lessonId) },
     });
+
+    // Recalculate order_index after deletion
+    await recalculateOrderIndex(parseInt(id));
 
     res.json({ message: "Lesson deleted successfully" });
   } catch (error) {
@@ -787,5 +910,79 @@ exports.permanentDeleteCourse = async (req, res) => {
   } catch (error) {
     console.error("Error deleting course permanently:", error);
     res.status(500).json({ message: "Could not delete course" });
+  }
+};
+
+
+// ==========================================
+// 19. REORDER LESSONS
+// ==========================================
+exports.reorderLessons = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { updates } = req.body; // Array of { id, order_index }
+    const instructorId = req.user.userId;
+
+    const course = await prisma.courses.findUnique({ 
+      where: { id: parseInt(id) } 
+    });
+
+    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    if (!Array.isArray(updates)) {
+      return res.status(400).json({ message: "Updates array is required" });
+    }
+
+    // Update each lesson's order_index
+    const updatePromises = updates.map(({ id: lessonId, order_index }) =>
+      prisma.courseContent.update({
+        where: { id: BigInt(lessonId) },
+        data: { order_index }
+      })
+    );
+
+    await Promise.all(updatePromises);
+
+    res.json({ 
+      success: true, 
+      message: "Lessons reordered successfully",
+      updated: updates.length 
+    });
+
+  } catch (error) {
+    console.error("Error reordering lessons:", error);
+    res.status(500).json({ message: "Server Error reordering lessons" });
+  }
+};
+
+// ==========================================
+// 20. FIX COURSE ORDER INDEX
+// ==========================================
+exports.fixCourseOrderIndex = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const instructorId = req.user.userId;
+
+    const course = await prisma.courses.findUnique({ 
+      where: { id: parseInt(id) } 
+    });
+
+    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    const result = await recalculateOrderIndex(parseInt(id));
+    
+    res.json({
+      success: true,
+      message: `Order index fixed for course ${id}`,
+      ...result
+    });
+
+  } catch (error) {
+    console.error("Error fixing order index:", error);
+    res.status(500).json({ message: "Server Error fixing order index" });
   }
 };
