@@ -663,10 +663,14 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Implemented Nested Lesson Structure (Video, Note, Quiz) within sections.
+- Integrated AWS S3 Video Upload with progress bar (Resolved SDK v2/v3 conflicts & ACL issues).
+- Built Quiz Manager & Note Editor modals in the frontend.
+- Updated Database Schema (is_preview) & Backend APIs for transactional Quiz updates.
 
 2. To do until next Scrum:
-
+- Making the course details page dynamic
+- Fixing course editing problems
 
 3. Need assistance / figure things out
 

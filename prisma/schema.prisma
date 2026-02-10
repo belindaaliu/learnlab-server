@@ -121,6 +121,9 @@ model Courses {
   UserSavedCourses  UserSavedCourses[]
   is_deleted        Boolean            @default(false)
   deleted_at        DateTime?
+  requirements      String? @db.Text
+  target_audience   String? @db.Text
+  long_description  String? @db.Text
 
   @@index([category_id], map: "fk_course_category")
   @@index([instructor_id], map: "fk_course_instructor")

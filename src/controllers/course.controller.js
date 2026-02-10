@@ -1,6 +1,5 @@
 const prisma = require('../lib/prisma');
 
-
 BigInt.prototype.toJSON = function () { return this.toString() }
 
 // ==========================================
@@ -11,7 +10,9 @@ exports.getAllCourses = async (req, res) => {
     const { search, category, sort } = req.query;
 
     // Initialize the filter object
-    const where = {};
+    const where = {
+        is_deleted: false
+    };
 
     // Search Logic
     if (search) {
@@ -52,8 +53,8 @@ exports.getAllCourses = async (req, res) => {
 
     // Format Response
     const formattedCourses = courses.map(course => ({
-      ...course, // Copy all fields (Ids represent automatically as string now)
-      price: parseFloat(course.price), // ✅ Fix Decimal to Float
+      ...course,
+      price: parseFloat(course.price),
       image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80", 
       category: course.Categories ? course.Categories.name : 'Uncategorized',
       instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : 'Unknown Instructor',
@@ -134,7 +135,8 @@ exports.getInstructorCourses = async (req, res) => {
 
     const courses = await prisma.courses.findMany({
       where: {
-        instructor_id: BigInt(instructorId)
+        instructor_id: BigInt(instructorId),
+        is_deleted: false // ✅ Ensure logic is consistent
       },
       orderBy: {
         created_at: 'desc'
@@ -162,7 +164,6 @@ exports.getInstructorCourses = async (req, res) => {
 // ==========================================
 exports.createCourse = async (req, res) => {
   try {
-    // ✅ Added 'language' to destructuring
     const { title, description, price, category_id, level, thumbnail_url, language } = req.body;
     
     const instructor_id = req.user.userId;
@@ -181,7 +182,7 @@ exports.createCourse = async (req, res) => {
         category_id: parseInt(category_id),
         level: level || 'beginner',
         thumbnail_url: (thumbnail_url && thumbnail_url.trim() !== "") ? thumbnail_url : DEFAULT_IMAGE,
-        instructor_id: instructor_id,
+        instructor_id: BigInt(instructor_id),
         language: language || "English",
         views: 0
       }
@@ -211,7 +212,7 @@ exports.deleteCourse = async (req, res) => {
       where: { id: courseId },
       data: { 
         is_deleted: true,
-        deleted_at: new Date() // ثبت زمان حذف
+        deleted_at: new Date() 
       } 
     });
 
@@ -234,7 +235,6 @@ exports.updateCourse = async (req, res) => {
       price, 
       category_id, 
       thumbnail_url,
-
       requirements, 
       target_audience, 
       long_description, 
@@ -254,21 +254,29 @@ exports.updateCourse = async (req, res) => {
       return res.status(403).json({ message: "Access denied. You are not the instructor of this course." });
     }
 
-    // 2. Update Course
-    const updatedCourse = await prisma.courses.update({
-      where: { id: parseInt(id) },
-      data: {
+    // 2. Prepare Data for Update
+
+    const updateData = {
         title: title || undefined,
         description: description || undefined,
         price: price ? parseFloat(price) : undefined,
-        category_id: category_id ? parseInt(category_id) : undefined,
         thumbnail_url: thumbnail_url || undefined,
-        
         requirements: requirements ? (Array.isArray(requirements) ? JSON.stringify(requirements) : requirements) : undefined,
         target_audience: target_audience ? (Array.isArray(target_audience) ? JSON.stringify(target_audience) : target_audience) : undefined,
         long_description: long_description || undefined,
         language: language || undefined
-      }
+    };
+
+    if (category_id) {
+        updateData.Categories = {
+            connect: { id: BigInt(category_id) }
+        };
+    }
+
+    // 3. Update Course
+    const updatedCourse = await prisma.courses.update({
+      where: { id: parseInt(id) },
+      data: updateData 
     });
 
     res.json({
@@ -278,7 +286,7 @@ exports.updateCourse = async (req, res) => {
 
   } catch (error) {
     console.error("Error updating course:", error);
-    res.status(500).json({ message: "Server Error updating course" });
+    res.status(500).json({ message: "Server Error updating course", error: error.message });
   }
 };
 
@@ -309,7 +317,7 @@ exports.createSection = async (req, res) => {
     const newSection = await prisma.courseContent.create({
       data: {
         course_id: parseInt(id),
-        title: title,
+        title,
         type: 'section',
         order_index: newOrderIndex,
         parent_id: null
@@ -409,7 +417,7 @@ exports.createLesson = async (req, res) => {
       data: {
         course_id: parseInt(id),
         parent_id: parseInt(sectionId),
-        title: title,
+        title,
         type: type || 'video',
         is_preview: is_preview || false,
         order_index: newOrder
@@ -596,7 +604,7 @@ exports.getLessonQuiz = async (req, res) => {
 };
 
 // ==========================================
-// 15. GET INSTRUCTOR DASHBOARD STATS (FIXED)
+// 15. GET INSTRUCTOR DASHBOARD STATS
 // ==========================================
 exports.getInstructorStats = async (req, res) => {
   try {
@@ -642,6 +650,7 @@ exports.getInstructorStats = async (req, res) => {
     const recentEnrollments = await prisma.enrollments.findMany({
       where: {
         course_id: { in: courseIds },
+
         enrolled_at: { gte: sixMonthsAgo }
       },
       include: {
@@ -662,7 +671,6 @@ exports.getInstructorStats = async (req, res) => {
     recentEnrollments.forEach(enrollment => {
 
       if (!enrollment.enrolled_at) return;
-
 
       const date = new Date(enrollment.enrolled_at); 
       const monthIndex = date.getMonth();
