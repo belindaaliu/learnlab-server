@@ -426,13 +426,14 @@ exports.getAllUsers = async (req, res) => {
       where.role = role;
     }
     
-    if (search && search.trim() !== '') {
-      where.OR = [
-        { first_name: { contains: search, mode: 'insensitive' } },
-        { last_name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ];
-    }
+  if (search && search.trim() !== '') {
+    const searchLower = search.toLowerCase();
+    where.OR = [
+      { first_name: { contains: searchLower } },
+      { last_name: { contains: searchLower } },
+      { email: { contains: searchLower } },
+    ];
+  }
 
     console.log('Fetching users with filters:', { role, search, page, limit });
     console.log('Where clause:', JSON.stringify(where, null, 2));
