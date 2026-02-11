@@ -38,7 +38,7 @@ const certificateController = {
   // HELPER: Generate PDF content
   // ==========================================
   _generatePDF: async (cert, dispositionType = "attachment") => {
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify/${cert.id}`;
+    const verifyUrl = `${process.env.FRONTEND_URL}/verify-certificate/${cert.id}`;
     const qrCodeDataUri = await QRCode.toDataURL(verifyUrl);
 
     const doc = new PDFDocument({
