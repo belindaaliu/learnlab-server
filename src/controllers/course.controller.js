@@ -917,7 +917,7 @@ exports.permanentDeleteCourse = async (req, res) => {
     console.error("Error deleting course permanently:", error);
     res.status(500).json({ message: "Could not delete course" });
   }
-}; // آکولاد بسته اینجا اضافه شد
+};
 
 // ==========================================
 // 19. REORDER LESSONS
@@ -948,7 +948,6 @@ exports.reorderLessons = async (req, res) => {
       return res.json({ success: true, message: "Lessons reordered using updates array" });
     }
 
-    // منطق جدید شما برای Drag & Drop
     if (lessonIds && Array.isArray(lessonIds)) {
       await prisma.$transaction(
         lessonIds.map((id, index) =>
