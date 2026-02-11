@@ -895,14 +895,13 @@ exports.restoreCourse = async (req, res) => {
 };
 
 // ==========================================
-// 18. PERMANENT DELETE (Hard Delete)
+// 18. PERMANENT DELETE
 // ==========================================
 exports.permanentDeleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const courseId = parseInt(id);
 
-    // Actual removal of all dependencies (transaction)
     await prisma.$transaction([
       prisma.courseContent.deleteMany({ where: { course_id: courseId } }),
       prisma.enrollments.deleteMany({ where: { course_id: courseId } }),
@@ -910,7 +909,7 @@ exports.permanentDeleteCourse = async (req, res) => {
       prisma.userSavedCourses.deleteMany({ where: { course_id: courseId } }),
       prisma.courseTags.deleteMany({ where: { course_id: courseId } }),
       prisma.certificates.deleteMany({ where: { course_id: courseId } }),
-      prisma.courses.delete({ where: { id: courseId } }) // Final elimination
+      prisma.courses.delete({ where: { id: courseId } })
     ]);
 
     res.json({ message: "Course permanently deleted" });
@@ -920,47 +919,54 @@ exports.permanentDeleteCourse = async (req, res) => {
   }
 };
 
-
 // ==========================================
 // 19. REORDER LESSONS
 // ==========================================
 exports.reorderLessons = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { updates } = req.body; // Array of { id, order_index }
+    const { id, sectionId } = req.params; 
+    const { updates, lessonIds } = req.body;
     const instructorId = req.user.userId;
+    const courseId = id || req.params.id; 
 
     const course = await prisma.courses.findUnique({ 
-      where: { id: parseInt(id) } 
+      where: { id: parseInt(courseId) } 
     });
 
     if (!course || course.instructor_id.toString() !== instructorId.toString()) {
-      return res.status(403).json({ message: "Access denied." });
+      return res.status(403).json({ message: "Access denied. You are not the instructor." });
     }
 
-    if (!Array.isArray(updates)) {
-      return res.status(400).json({ message: "Updates array is required" });
+    if (updates && Array.isArray(updates)) {
+      const updatePromises = updates.map(({ id: lessonId, order_index }) =>
+        prisma.courseContent.update({
+          where: { id: BigInt(lessonId) },
+          data: { order_index: parseInt(order_index) }
+        })
+      );
+      await Promise.all(updatePromises);
+      return res.json({ success: true, message: "Lessons reordered using updates array" });
     }
 
-    // Update each lesson's order_index
-    const updatePromises = updates.map(({ id: lessonId, order_index }) =>
-      prisma.courseContent.update({
-        where: { id: BigInt(lessonId) },
-        data: { order_index }
-      })
-    );
+    if (lessonIds && Array.isArray(lessonIds)) {
+      await prisma.$transaction(
+        lessonIds.map((id, index) =>
+          prisma.courseContent.update({
+            where: { id: parseInt(id) },
+            data: { 
+              order_index: index, 
+              parent_id: sectionId ? parseInt(sectionId) : undefined 
+            }
+          })
+        )
+      );
+      return res.json({ success: true, message: "Lessons reordered using sequence" });
+    }
 
-    await Promise.all(updatePromises);
-
-    res.json({ 
-      success: true, 
-      message: "Lessons reordered successfully",
-      updated: updates.length 
-    });
-
+    return res.status(400).json({ message: "Invalid data format. Provide 'updates' or 'lessonIds'." });
   } catch (error) {
     console.error("Error reordering lessons:", error);
-    res.status(500).json({ message: "Server Error reordering lessons" });
+    res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
 
@@ -981,13 +987,7 @@ exports.fixCourseOrderIndex = async (req, res) => {
     }
 
     const result = await recalculateOrderIndex(parseInt(id));
-    
-    res.json({
-      success: true,
-      message: `Order index fixed for course ${id}`,
-      ...result
-    });
-
+    res.json({ success: true, message: `Order index fixed for course ${id}`, ...result });
   } catch (error) {
     console.error("Error fixing order index:", error);
     res.status(500).json({ message: "Server Error fixing order index" });
