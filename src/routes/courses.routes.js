@@ -58,16 +58,17 @@ router.get('/:id/lessons/:lessonId/quiz', authMiddleware, courseController.getLe
 router.get('/:lessonId/quiz', authMiddleware, courseController.getLessonQuiz);
 router.put('/:id/lessons/:lessonId/quiz', authMiddleware, courseController.updateLessonQuiz);
 
-<<<<<<< Updated upstream
-=======
+// ==========================================
+// 8. REORDERING & MAINTENANCE
+// ==========================================
+
 // Reorder lessons (Alternative route - check if needed)
 router.post("/:id/reorder-lessons", authMiddleware, courseController.reorderLessons);
 
 // Reorder lessons content
-router.put('/:courseId/sections/:sectionId/reorder', authMiddleware, courseController.reorderLessons);
+router.put('/:id/sections/:sectionId/reorder', authMiddleware, courseController.reorderLessons);
 
 // Fix order index
 router.post("/:id/fix-order", authMiddleware, courseController.fixCourseOrderIndex);
 
->>>>>>> Stashed changes
 module.exports = router;

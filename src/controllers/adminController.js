@@ -348,6 +348,9 @@ exports.getCourses = async (req, res) => {
       include: {
         Users: { select: { first_name: true, last_name: true } },
         Categories: { select: { name: true } },
+        SubscriptionPlans: {
+          select: { name: true }
+        }
       },
       orderBy: { created_at: "desc" },
     });
@@ -405,6 +408,173 @@ exports.updateCourseStatus = async (req, res) => {
       }),
     );
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// --- USER MANAGEMENT ---
+exports.getAllUsers = async (req, res) => {
+  try {
+    const { role, status, search, page = 1, limit = 20 } = req.query;
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Build where clause
+    const where = {};
+    
+    if (role && role !== '') {
+      where.role = role;
+    }
+    
+  if (search && search.trim() !== '') {
+    const searchLower = search.toLowerCase();
+    where.OR = [
+      { first_name: { contains: searchLower } },
+      { last_name: { contains: searchLower } },
+      { email: { contains: searchLower } },
+    ];
+  }
+
+    console.log('Fetching users with filters:', { role, search, page, limit });
+    console.log('Where clause:', JSON.stringify(where, null, 2));
+
+    const [users, totalCount] = await Promise.all([
+      prisma.users.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { created_at: 'desc' },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          email: true,
+          role: true,
+          created_at: true,
+          // last_login: true,  // REMOVED - field doesn't exist
+          photo_url: true,
+          instructor_application_status: true,
+        },
+      }),
+      prisma.users.count({ where }),
+    ]);
+
+    console.log('Found users:', users.length);
+    console.log('Total count:', totalCount);
+
+    res.json(
+      serialize({
+        success: true,
+        data: users,
+        pagination: {
+          total: totalCount,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(totalCount / parseInt(limit)),
+        },
+      })
+    );
+  } catch (error) {
+    console.error("Get All Users Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getUserDetail = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await prisma.users.findUnique({
+      where: { id: BigInt(userId) },
+      include: {
+        Enrollments: {
+          include: {
+            Courses: {
+              select: {
+                id: true,
+                title: true,
+                price: true,
+              }
+            }
+          }
+        },
+        Payments: {
+          where: { status: 'paid' },
+          select: {
+            amount: true,
+            created_at: true,
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Calculate stats
+    const totalSpent = user.Payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const enrollmentCount = user.Enrollments.length;
+
+    res.json(
+      serialize({
+        success: true,
+        data: {
+          ...user,
+          stats: {
+            totalSpent,
+            enrollmentCount,
+          }
+        }
+      })
+    );
+  } catch (error) {
+    console.error("Get User Detail Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    if (!['student', 'instructor', 'admin'].includes(role)) {
+      return res.status(400).json({ success: false, message: "Invalid role" });
+    }
+
+    const updatedUser = await prisma.users.update({
+      where: { id: BigInt(userId) },
+      data: { role },
+    });
+
+    res.json(
+      serialize({
+        success: true,
+        message: `User role updated to ${role}`,
+        data: updatedUser,
+      })
+    );
+  } catch (error) {
+    console.error("Update User Role Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    await prisma.users.delete({
+      where: { id: BigInt(userId) },
+    });
+
+    res.json({
+      success: true,
+      message: "User deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete User Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

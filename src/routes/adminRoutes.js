@@ -45,8 +45,9 @@ router.get(
 router.patch("/courses/:courseId/status", adminController.updateCourseStatus);
 
 // --- USER MANAGEMENT (General) ---
-
-// router.get('/users', adminController.getAllUsers);
-// router.patch('/users/:userId/role', adminController.updateUserRole);
+router.get('/users', adminController.getAllUsers);
+router.get('/users/:userId', adminController.getUserDetail);
+router.patch('/users/:userId/role', adminController.updateUserRole);
+router.delete('/users/:userId', adminController.deleteUser);
 
 module.exports = router;
