@@ -769,4 +769,86 @@ exports.permanentDeleteCourse = async (req, res) => {
     console.error("Error deleting course permanently:", error);
     res.status(500).json({ message: "Could not delete course" });
   }
+<<<<<<< Updated upstream
 };
+=======
+};
+
+
+// ==========================================
+// 19. REORDER LESSONS
+// ==========================================
+exports.reorderLessons = async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const { lessonIds } = req.body;
+    const instructorId = req.user.userId;
+
+    if (!lessonIds || !Array.isArray(lessonIds)) {
+      return res.status(400).json({ message: "Invalid data: lessonIds array is required" });
+    }
+
+    const section = await prisma.courseContent.findFirst({
+      where: {
+        id: parseInt(sectionId),
+        type: 'section',
+        Courses: {
+          instructor_id: BigInt(instructorId)
+        }
+      }
+    });
+
+    if (!section) {
+      return res.status(403).json({ message: "Access denied or section not found." });
+    }
+
+    await prisma.$transaction(
+      lessonIds.map((id, index) =>
+        prisma.courseContent.update({
+          where: { id: parseInt(id) },
+          data: { 
+            order_index: index, 
+            parent_id: parseInt(sectionId)
+          }
+        })
+      )
+    );
+
+    res.json({ success: true, message: "Lessons reordered successfully" });
+
+  } catch (error) {
+    console.error("Error reordering lessons:", error);
+    res.status(500).json({ message: "Server Error reordering lessons", error: error.message });
+  }
+};
+
+// ==========================================
+// 20. FIX COURSE ORDER INDEX
+// ==========================================
+exports.fixCourseOrderIndex = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const instructorId = req.user.userId;
+
+    const course = await prisma.courses.findUnique({ 
+      where: { id: parseInt(id) } 
+    });
+
+    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    const result = await recalculateOrderIndex(parseInt(id));
+    
+    res.json({
+      success: true,
+      message: `Order index fixed for course ${id}`,
+      ...result
+    });
+
+  } catch (error) {
+    console.error("Error fixing order index:", error);
+    res.status(500).json({ message: "Server Error fixing order index" });
+  }
+};
+>>>>>>> Stashed changes
