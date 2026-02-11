@@ -1,7 +1,124 @@
 const prisma = require('../lib/prisma');
 
-
 BigInt.prototype.toJSON = function () { return this.toString() }
+
+// Add this after line 3 (BigInt.prototype.toJSON = function () ...)
+const recalculateOrderIndex = async (courseId) => {
+  try {
+    console.log(` Recalculating order_index for course ${courseId}`);
+    
+    // First, get all sections (parent items) ordered by current order_index
+    const sections = await prisma.courseContent.findMany({
+      where: { 
+        course_id: BigInt(courseId),
+        type: 'section',
+        parent_id: null
+      },
+      orderBy: [
+        { order_index: 'asc' },
+        { id: 'asc' }
+      ]
+    });
+
+    console.log(`📁 Found ${sections.length} sections`);
+    
+    let globalOrderIndex = 0;
+    const updatePromises = [];
+
+    // 1. Update sections with sequential order_index
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      console.log(` Section ${i}: "${section.title}" (ID: ${section.id}) → order ${globalOrderIndex}`);
+      
+      updatePromises.push(
+        prisma.courseContent.update({
+          where: { id: section.id },
+          data: { order_index: globalOrderIndex }
+        })
+      );
+      globalOrderIndex++;
+    }
+
+    // 2. For each section, get its child lessons and update their order_index
+    for (const section of sections) {
+      console.log(`\n Processing child lessons for section: "${section.title}"`);
+      
+      // Get all child lessons for this section, ordered by current order_index
+      const childLessons = await prisma.courseContent.findMany({
+        where: { 
+          course_id: BigInt(courseId),
+          parent_id: section.id,
+          type: { not: 'section' }
+        },
+        orderBy: [
+          { order_index: 'asc' },
+          { id: 'asc' }
+        ]
+      });
+
+      console.log(`   Found ${childLessons.length} child lessons`);
+      
+      // Update child lessons with sequential order_index starting from current globalOrderIndex
+      for (let j = 0; j < childLessons.length; j++) {
+        const lesson = childLessons[j];
+        console.log(`    Lesson "${lesson.title}" (ID: ${lesson.id}) → order ${globalOrderIndex}`);
+        
+        updatePromises.push(
+          prisma.courseContent.update({
+            where: { id: lesson.id },
+            data: { order_index: globalOrderIndex }
+          })
+        );
+        globalOrderIndex++;
+      }
+    }
+
+    // 3. Handle standalone lessons (no parent)
+    console.log(`\n Processing standalone lessons (no parent)`);
+    const standaloneLessons = await prisma.courseContent.findMany({
+      where: { 
+        course_id: BigInt(courseId),
+        parent_id: null,
+        type: { not: 'section' }
+      },
+      orderBy: [
+        { order_index: 'asc' },
+        { id: 'asc' }
+      ]
+    });
+
+    console.log(`   Found ${standaloneLessons.length} standalone lessons`);
+    
+    for (let k = 0; k < standaloneLessons.length; k++) {
+      const lesson = standaloneLessons[k];
+      console.log(`    Standalone lesson "${lesson.title}" (ID: ${lesson.id}) → order ${globalOrderIndex}`);
+      
+      updatePromises.push(
+        prisma.courseContent.update({
+          where: { id: lesson.id },
+          data: { order_index: globalOrderIndex }
+        })
+      );
+      globalOrderIndex++;
+    }
+
+    // Execute all updates
+    await Promise.all(updatePromises);
+    
+    console.log(` Recalculated order_index for ${updatePromises.length} items in course ${courseId}`);
+    return { 
+      success: true, 
+      updated: updatePromises.length,
+      sections: sections.length,
+      lessons: updatePromises.length - sections.length
+    };
+    
+  } catch (error) {
+    console.error(" Error recalculating order_index:", error);
+    throw error;
+  }
+};
+
 
 // ==========================================
 // 1. GET ALL COURSES (List & Search)
@@ -11,49 +128,52 @@ exports.getAllCourses = async (req, res) => {
     const { search, category, sort } = req.query;
 
     // Initialize the filter object
-    const where = {};
+    const where = {
+        is_deleted: false
+    };
 
     // Search Logic
     if (search) {
       where.OR = [
         { title: { contains: search } },
-        { description: { contains: search } }
+        { description: { contains: search } },
       ];
     }
 
     // Category Filter
-    if (category && category !== 'All') {
+    if (category && category !== "All") {
       where.Categories = {
-        name: category
+        name: category,
       };
     }
 
     // Sorting Logic
-    let orderBy = { created_at: 'desc' }; // Default: Newest first
-    
-    if (sort === 'price_asc') orderBy = { price: 'asc' };
-    if (sort === 'price_desc') orderBy = { price: 'desc' };
-    if (sort === 'rating_desc') orderBy = { views: 'desc' };
+    let orderBy = { created_at: "desc" }; // Default: Newest first
+
+    if (sort === "price_asc") orderBy = { price: "asc" };
+    if (sort === "price_desc") orderBy = { price: "desc" };
+    if (sort === "rating_desc") orderBy = { views: "desc" };
 
     // Execute Query
     const courses = await prisma.courses.findMany({
       where,
       orderBy,
       include: {
-        Categories: true, 
-        Users: {          
+        Categories: true,
+        SubscriptionPlans: true,
+        Users: {
           select: {
             first_name: true,
-            last_name: true
-          }
-        }
-      }
+            last_name: true,
+          },
+        },
+      },
     });
 
     // Format Response
     const formattedCourses = courses.map(course => ({
-      ...course, // Copy all fields (Ids represent automatically as string now)
-      price: parseFloat(course.price), // ✅ Fix Decimal to Float
+      ...course,
+      price: parseFloat(course.price),
       image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80", 
       category: course.Categories ? course.Categories.name : 'Uncategorized',
       instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : 'Unknown Instructor',
@@ -63,16 +183,12 @@ exports.getAllCourses = async (req, res) => {
     }));
 
     res.json(formattedCourses);
-
   } catch (error) {
     console.error("Error fetching courses:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
 
-// ==========================================
-// 2. GET SINGLE COURSE (Details Page)
-// ==========================================
 exports.getCourseById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -96,32 +212,31 @@ exports.getCourseById = async (req, res) => {
             biography: true 
           }
         },
+        SubscriptionPlans: true, 
         CourseContent: {
-          orderBy: { order_index: 'asc' }
-        }
-      }
+          orderBy: { order_index: "asc" },
+        },
+      },
     });
 
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    // Default image if missing
-    if (!course.thumbnail_url) {
-        course.thumbnail_url = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
-    }
+    const planName = course.SubscriptionPlans?.name;
 
-    // ✅ Fix Decimal Price
-    const responseData = {
-        ...course,
-        price: parseFloat(course.price)
-    };
-
-    res.json(responseData);
+    res.json({
+      ...course,
+      required_plan_name: planName,
+      thumbnail_url: course.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80"
+    });
 
   } catch (error) {
-    console.error("🔥 Server Error:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("🔥 DATABASE ERROR:", error);
+    res.status(500).json({ 
+      message: "Internal Server Error", 
+      details: error.message 
+    });
   }
 };
 
@@ -134,20 +249,28 @@ exports.getInstructorCourses = async (req, res) => {
 
     const courses = await prisma.courses.findMany({
       where: {
-        instructor_id: BigInt(instructorId)
+        instructor_id: BigInt(instructorId),
+        is_deleted: false // ✅ Ensure logic is consistent
       },
       orderBy: {
-        created_at: 'desc'
+        created_at: "desc",
       },
       include: {
         Categories: true,
+                _count: {
+          select: {
+            Enrollments: true 
+          }
+        }
       }
     });
 
     // ✅ Fix Decimal Price
     const serializedCourses = courses.map(course => ({
         ...course,
-        price: parseFloat(course.price)
+        id: Number(course.id),
+        price: parseFloat(course.price),
+        student_count: course._count?.Enrollments || 0,
     }));
 
     res.json(serializedCourses);
@@ -162,15 +285,17 @@ exports.getInstructorCourses = async (req, res) => {
 // ==========================================
 exports.createCourse = async (req, res) => {
   try {
-    // ✅ Added 'language' to destructuring
     const { title, description, price, category_id, level, thumbnail_url, language } = req.body;
     
     const instructor_id = req.user.userId;
 
-    const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
+    const DEFAULT_IMAGE =
+      "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80";
 
     if (!title || !price || !category_id) {
-      return res.status(400).json({ message: "Please fill in all required fields." });
+      return res
+        .status(400)
+        .json({ message: "Please fill in all required fields." });
     }
 
     const newCourse = await prisma.courses.create({
@@ -181,7 +306,7 @@ exports.createCourse = async (req, res) => {
         category_id: parseInt(category_id),
         level: level || 'beginner',
         thumbnail_url: (thumbnail_url && thumbnail_url.trim() !== "") ? thumbnail_url : DEFAULT_IMAGE,
-        instructor_id: instructor_id,
+        instructor_id: BigInt(instructor_id),
         language: language || "English",
         views: 0
       }
@@ -211,7 +336,7 @@ exports.deleteCourse = async (req, res) => {
       where: { id: courseId },
       data: { 
         is_deleted: true,
-        deleted_at: new Date() // ثبت زمان حذف
+        deleted_at: new Date() 
       } 
     });
 
@@ -234,7 +359,6 @@ exports.updateCourse = async (req, res) => {
       price, 
       category_id, 
       thumbnail_url,
-
       requirements, 
       target_audience, 
       long_description, 
@@ -254,21 +378,29 @@ exports.updateCourse = async (req, res) => {
       return res.status(403).json({ message: "Access denied. You are not the instructor of this course." });
     }
 
-    // 2. Update Course
-    const updatedCourse = await prisma.courses.update({
-      where: { id: parseInt(id) },
-      data: {
+    // 2. Prepare Data for Update
+
+    const updateData = {
         title: title || undefined,
         description: description || undefined,
         price: price ? parseFloat(price) : undefined,
-        category_id: category_id ? parseInt(category_id) : undefined,
         thumbnail_url: thumbnail_url || undefined,
-        
         requirements: requirements ? (Array.isArray(requirements) ? JSON.stringify(requirements) : requirements) : undefined,
         target_audience: target_audience ? (Array.isArray(target_audience) ? JSON.stringify(target_audience) : target_audience) : undefined,
         long_description: long_description || undefined,
         language: language || undefined
-      }
+    };
+
+    if (category_id) {
+        updateData.Categories = {
+            connect: { id: BigInt(category_id) }
+        };
+    }
+
+    // 3. Update Course
+    const updatedCourse = await prisma.courses.update({
+      where: { id: parseInt(id) },
+      data: updateData 
     });
 
     res.json({
@@ -278,7 +410,7 @@ exports.updateCourse = async (req, res) => {
 
   } catch (error) {
     console.error("Error updating course:", error);
-    res.status(500).json({ message: "Server Error updating course" });
+    res.status(500).json({ message: "Server Error updating course", error: error.message });
   }
 };
 
@@ -292,32 +424,39 @@ exports.createSection = async (req, res) => {
     const instructorId = req.user.userId;
 
     const course = await prisma.courses.findUnique({
-      where: { id: parseInt(id) }
+      where: { id: parseInt(id) },
     });
 
-    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+    if (
+      !course ||
+      course.instructor_id.toString() !== instructorId.toString()
+    ) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    const lastContent = await prisma.courseContent.findFirst({
-      where: { course_id: parseInt(id), parent_id: null },
+    // Find the last section to get the next order_index
+    const lastSection = await prisma.courseContent.findFirst({
+      where: { 
+        course_id: parseInt(id), 
+        type: 'section',
+        parent_id: null 
+      },
       orderBy: { order_index: 'desc' }
     });
 
-    const newOrderIndex = lastContent ? lastContent.order_index + 1 : 0;
+    const newOrderIndex = lastSection ? lastSection.order_index + 1 : 0;
 
     const newSection = await prisma.courseContent.create({
       data: {
         course_id: parseInt(id),
-        title: title,
+        title,
         type: 'section',
         order_index: newOrderIndex,
-        parent_id: null
-      }
+        parent_id: null,
+      },
     });
 
     res.status(201).json(newSection);
-
   } catch (error) {
     console.error("Error creating section:", error);
     res.status(500).json({ message: "Server Error creating section" });
@@ -333,14 +472,19 @@ exports.updateSection = async (req, res) => {
     const { title } = req.body;
     const instructorId = req.user.userId;
 
-    const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
-    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+    const course = await prisma.courses.findUnique({
+      where: { id: parseInt(id) },
+    });
+    if (
+      !course ||
+      course.instructor_id.toString() !== instructorId.toString()
+    ) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
     const updatedSection = await prisma.courseContent.update({
       where: { id: parseInt(sectionId) },
-      data: { title }
+      data: { title },
     });
 
     res.json(updatedSection);
@@ -358,13 +502,18 @@ exports.deleteSection = async (req, res) => {
     const { id, sectionId } = req.params;
     const instructorId = req.user.userId;
 
-    const course = await prisma.courses.findUnique({ where: { id: parseInt(id) } });
-    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+    const course = await prisma.courses.findUnique({
+      where: { id: parseInt(id) },
+    });
+    if (
+      !course ||
+      course.instructor_id.toString() !== instructorId.toString()
+    ) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
     await prisma.courseContent.delete({
-      where: { id: parseInt(sectionId) }
+      where: { id: parseInt(sectionId) },
     });
 
     res.json({ message: "Section deleted successfully" });
@@ -389,35 +538,33 @@ exports.createLesson = async (req, res) => {
     }
 
     const section = await prisma.courseContent.findFirst({
-      where: { 
-        id: parseInt(sectionId), 
+      where: {
+        id: parseInt(sectionId),
         course_id: parseInt(id),
-        type: 'section' 
-      }
+        type: "section",
+      },
     });
     if (!section) {
-      return res.status(404).json({ message: "Section not found in this course." });
+      return res
+        .status(404)
+        .json({ message: "Section not found in this course." });
     }
-
-    const lastLesson = await prisma.courseContent.findFirst({
-      where: { parent_id: parseInt(sectionId) },
-      orderBy: { order_index: 'desc' }
-    });
-    const newOrder = lastLesson ? lastLesson.order_index + 1 : 0;
 
     const newLesson = await prisma.courseContent.create({
       data: {
         course_id: parseInt(id),
         parent_id: parseInt(sectionId),
-        title: title,
+        title,
         type: type || 'video',
         is_preview: is_preview || false,
-        order_index: newOrder
+        order_index: 9999 // Temporary high value
       }
     });
 
-    res.status(201).json(newLesson);
+    // Recalculate order_index for all lessons in this section
+    await recalculateOrderIndex(parseInt(id));
 
+    res.status(201).json(newLesson);
   } catch (error) {
     console.error("Error creating lesson:", error);
     res.status(500).json({ message: "Server Error creating lesson" });
@@ -435,7 +582,7 @@ exports.updateLesson = async (req, res) => {
 
     const lesson = await prisma.courseContent.findUnique({
       where: { id: parseInt(lessonId) },
-      include: { Courses: true } 
+      include: { Courses: true },
     });
 
     if (!lesson) {
@@ -443,7 +590,9 @@ exports.updateLesson = async (req, res) => {
     }
 
     if (lesson.course_id.toString() !== id.toString()) {
-      return res.status(400).json({ message: "Lesson does not belong to this course." });
+      return res
+        .status(400)
+        .json({ message: "Lesson does not belong to this course." });
     }
 
     if (lesson.Courses.instructor_id.toString() !== instructorId.toString()) {
@@ -456,12 +605,12 @@ exports.updateLesson = async (req, res) => {
         title: title !== undefined ? title : lesson.title,
         is_preview: is_preview !== undefined ? is_preview : lesson.is_preview,
         video_url: video_url !== undefined ? video_url : lesson.video_url,
-        note_content: note_content !== undefined ? note_content : lesson.note_content
-      }
+        note_content:
+          note_content !== undefined ? note_content : lesson.note_content,
+      },
     });
 
     res.json(updatedLesson);
-
   } catch (error) {
     console.error("Error updating lesson:", error);
     res.status(500).json({ message: "Server Error updating lesson" });
@@ -478,7 +627,7 @@ exports.deleteLesson = async (req, res) => {
 
     const lesson = await prisma.courseContent.findUnique({
       where: { id: parseInt(lessonId) },
-      include: { Courses: true }
+      include: { Courses: true },
     });
 
     if (!lesson) {
@@ -494,11 +643,13 @@ exports.deleteLesson = async (req, res) => {
     }
 
     await prisma.courseContent.delete({
-      where: { id: parseInt(lessonId) }
+      where: { id: parseInt(lessonId) },
     });
 
-    res.json({ message: "Lesson deleted successfully" });
+    // Recalculate order_index after deletion
+    await recalculateOrderIndex(parseInt(id));
 
+    res.json({ message: "Lesson deleted successfully" });
   } catch (error) {
     console.error("Error deleting lesson:", error);
     res.status(500).json({ message: "Server Error deleting lesson" });
@@ -520,22 +671,22 @@ exports.updateLessonQuiz = async (req, res) => {
     }
 
     let assessment = await prisma.assessments.findFirst({
-      where: { content_id: parseInt(lessonId) }
+      where: { content_id: parseInt(lessonId) },
     });
 
     if (!assessment) {
       assessment = await prisma.assessments.create({
         data: {
           content_id: parseInt(lessonId),
-          title: "Lesson Quiz"
-        }
+          title: "Lesson Quiz",
+        },
       });
     }
 
     // 3. Using Transaction for clean update
     await prisma.$transaction(async (tx) => {
       await tx.assessmentQuestions.deleteMany({
-        where: { assessment_id: assessment.id }
+        where: { assessment_id: assessment.id },
       });
 
       for (const q of questions) {
@@ -543,24 +694,23 @@ exports.updateLessonQuiz = async (req, res) => {
           data: {
             assessment_id: assessment.id,
             question_text: q.question_text,
-            question_type: q.question_type 
-          }
+            question_type: q.question_type,
+          },
         });
 
         if (q.options && q.options.length > 0) {
           await tx.assessmentOptions.createMany({
-            data: q.options.map(opt => ({
+            data: q.options.map((opt) => ({
               question_id: newQuestion.id,
               option_text: opt.option_text,
-              is_correct: opt.is_correct
-            }))
+              is_correct: opt.is_correct,
+            })),
           });
         }
       }
     });
 
     res.json({ message: "Quiz updated successfully" });
-
   } catch (error) {
     console.error("Error updating quiz:", error);
     res.status(500).json({ message: "Server Error updating quiz" });
@@ -578,9 +728,9 @@ exports.getLessonQuiz = async (req, res) => {
       where: { content_id: parseInt(lessonId) },
       include: {
         AssessmentQuestions: {
-          include: { AssessmentOptions: true }
-        }
-      }
+          include: { AssessmentOptions: true },
+        },
+      },
     });
 
     if (!assessment) {
@@ -588,7 +738,6 @@ exports.getLessonQuiz = async (req, res) => {
     }
 
     res.json({ questions: assessment.AssessmentQuestions });
-
   } catch (error) {
     console.error("Error fetching quiz:", error);
     res.status(500).json({ message: "Server Error" });
@@ -596,7 +745,7 @@ exports.getLessonQuiz = async (req, res) => {
 };
 
 // ==========================================
-// 15. GET INSTRUCTOR DASHBOARD STATS (FIXED)
+// 15. GET INSTRUCTOR DASHBOARD STATS
 // ==========================================
 exports.getInstructorStats = async (req, res) => {
   try {
@@ -642,6 +791,7 @@ exports.getInstructorStats = async (req, res) => {
     const recentEnrollments = await prisma.enrollments.findMany({
       where: {
         course_id: { in: courseIds },
+
         enrolled_at: { gte: sixMonthsAgo }
       },
       include: {
@@ -662,7 +812,6 @@ exports.getInstructorStats = async (req, res) => {
     recentEnrollments.forEach(enrollment => {
 
       if (!enrollment.enrolled_at) return;
-
 
       const date = new Date(enrollment.enrolled_at); 
       const monthIndex = date.getMonth();
@@ -746,14 +895,13 @@ exports.restoreCourse = async (req, res) => {
 };
 
 // ==========================================
-// 18. PERMANENT DELETE (Hard Delete)
+// 18. PERMANENT DELETE
 // ==========================================
 exports.permanentDeleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const courseId = parseInt(id);
 
-    // Actual removal of all dependencies (transaction)
     await prisma.$transaction([
       prisma.courseContent.deleteMany({ where: { course_id: courseId } }),
       prisma.enrollments.deleteMany({ where: { course_id: courseId } }),
@@ -761,7 +909,7 @@ exports.permanentDeleteCourse = async (req, res) => {
       prisma.userSavedCourses.deleteMany({ where: { course_id: courseId } }),
       prisma.courseTags.deleteMany({ where: { course_id: courseId } }),
       prisma.certificates.deleteMany({ where: { course_id: courseId } }),
-      prisma.courses.delete({ where: { id: courseId } }) // Final elimination
+      prisma.courses.delete({ where: { id: courseId } })
     ]);
 
     res.json({ message: "Course permanently deleted" });
@@ -769,56 +917,56 @@ exports.permanentDeleteCourse = async (req, res) => {
     console.error("Error deleting course permanently:", error);
     res.status(500).json({ message: "Could not delete course" });
   }
-<<<<<<< Updated upstream
 };
-=======
-};
-
 
 // ==========================================
 // 19. REORDER LESSONS
 // ==========================================
 exports.reorderLessons = async (req, res) => {
   try {
-    const { sectionId } = req.params;
-    const { lessonIds } = req.body;
+    const { id, sectionId } = req.params; 
+    const { updates, lessonIds } = req.body;
     const instructorId = req.user.userId;
+    const courseId = id || req.params.id; 
 
-    if (!lessonIds || !Array.isArray(lessonIds)) {
-      return res.status(400).json({ message: "Invalid data: lessonIds array is required" });
-    }
-
-    const section = await prisma.courseContent.findFirst({
-      where: {
-        id: parseInt(sectionId),
-        type: 'section',
-        Courses: {
-          instructor_id: BigInt(instructorId)
-        }
-      }
+    const course = await prisma.courses.findUnique({ 
+      where: { id: parseInt(courseId) } 
     });
 
-    if (!section) {
-      return res.status(403).json({ message: "Access denied or section not found." });
+    if (!course || course.instructor_id.toString() !== instructorId.toString()) {
+      return res.status(403).json({ message: "Access denied. You are not the instructor." });
     }
 
-    await prisma.$transaction(
-      lessonIds.map((id, index) =>
+    if (updates && Array.isArray(updates)) {
+      const updatePromises = updates.map(({ id: lessonId, order_index }) =>
         prisma.courseContent.update({
-          where: { id: parseInt(id) },
-          data: { 
-            order_index: index, 
-            parent_id: parseInt(sectionId)
-          }
+          where: { id: BigInt(lessonId) },
+          data: { order_index: parseInt(order_index) }
         })
-      )
-    );
+      );
+      await Promise.all(updatePromises);
+      return res.json({ success: true, message: "Lessons reordered using updates array" });
+    }
 
-    res.json({ success: true, message: "Lessons reordered successfully" });
+    if (lessonIds && Array.isArray(lessonIds)) {
+      await prisma.$transaction(
+        lessonIds.map((id, index) =>
+          prisma.courseContent.update({
+            where: { id: parseInt(id) },
+            data: { 
+              order_index: index, 
+              parent_id: sectionId ? parseInt(sectionId) : undefined 
+            }
+          })
+        )
+      );
+      return res.json({ success: true, message: "Lessons reordered using sequence" });
+    }
 
+    return res.status(400).json({ message: "Invalid data format. Provide 'updates' or 'lessonIds'." });
   } catch (error) {
     console.error("Error reordering lessons:", error);
-    res.status(500).json({ message: "Server Error reordering lessons", error: error.message });
+    res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
 
@@ -839,16 +987,9 @@ exports.fixCourseOrderIndex = async (req, res) => {
     }
 
     const result = await recalculateOrderIndex(parseInt(id));
-    
-    res.json({
-      success: true,
-      message: `Order index fixed for course ${id}`,
-      ...result
-    });
-
+    res.json({ success: true, message: `Order index fixed for course ${id}`, ...result });
   } catch (error) {
     console.error("Error fixing order index:", error);
     res.status(500).json({ message: "Server Error fixing order index" });
   }
 };
->>>>>>> Stashed changes
