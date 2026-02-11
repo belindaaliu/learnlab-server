@@ -757,10 +757,12 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
-
+- Instructor student list, instructor quiz review, student progress details added in front end in instructor panel.
+- instructor student progress controller and routes added in backend to GET STUDENT PROGRESS SUMMARY , GET DETAILED LESSON PROGRESS 
+,GET QUIZ ATTEMPT HISTORY, GET STUDENT COURSE ACTIVITY, GET ENROLLED STUDENTS WITH PROGRESS, GET QUIZ ATTEMPT DETAILS FOR INSTRUCTOR
 
 2. To do until next Scrum:
-
+-fixing bugs.
 
 
 3. Need assistance / figure things out
