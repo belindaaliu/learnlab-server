@@ -7,7 +7,7 @@ const subscriptionController = {
   getPlans: async (req, res) => {
     try {
       const plans = await prisma.subscriptionPlans.findMany({
-        orderBy: { price: "asc" }
+        orderBy: { price: "asc" },
       });
 
       const formattedPlans = plans.map((plan) => {
@@ -49,92 +49,105 @@ const subscriptionController = {
         features = {},
         button_text,
         slug,
+        courseIds,
       } = req.body;
 
-      const newPlan = await prisma.subscriptionPlans.create({
-        data: {
-          name,
-          price,
-          duration_days,
-          description,
-          plan_type,
-          button_text,
-          slug,
-          features, // Prisma stores JSON directly
-        },
+      const result = await prisma.$transaction(async (tx) => {
+        // Create the plan
+        const newPlan = await tx.subscriptionPlans.create({
+          data: {
+            name,
+            price: Number(price),
+            duration_days: Number(duration_days),
+            description,
+            plan_type,
+            button_text,
+            slug,
+            features,
+          },
+        });
+
+        // Link selected courses to this new plan
+        if (courseIds && courseIds.length > 0) {
+          await tx.courses.updateMany({
+            where: { id: { in: courseIds.map((id) => Number(id)) } },
+            data: { plan_id: newPlan.id },
+          });
+        }
+
+        return newPlan;
       });
 
       res.json({
         success: true,
         message: "Subscription plan created",
-        data: newPlan,
+        data: result,
       });
     } catch (error) {
-      console.error("Create Plan Error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  /* ----------------------------------------------------
-   * UPDATE EXISTING PLAN (ADMIN ONLY)
-   * --------------------------------------------------*/
   updatePlan: async (req, res) => {
-    try {
-      const planId = BigInt(req.params.id);
+  try {
+    const planId = BigInt(req.params.id);
+    const {
+      name,
+      price,
+      duration_days,
+      description,
+      plan_type,
+      button_text,
+      slug,
+      features,
+      courseIds = [] 
+    } = req.body;
 
-      const {
-        name,
-        price,
-        duration_days,
-        description,
-        plan_type,
-        button_text,
-        slug,
-        features,
-      } = req.body;
-
-      // Fetch existing plan to merge JSON
-      const existing = await prisma.subscriptionPlans.findUnique({
-        where: { id: planId },
-      });
-
-      if (!existing) {
-        return res.status(404).json({
-          success: false,
-          message: "Plan not found",
-        });
-      }
-
-      // Merge features instead of overwriting (optional but recommended)
-      let mergedFeatures = existing.features || {};
-      if (features && typeof features === "object") {
-        mergedFeatures = { ...mergedFeatures, ...features };
-      }
-
-      const updatedPlan = await prisma.subscriptionPlans.update({
+    const result = await prisma.$transaction(async (tx) => {
+      // Update Plan Details
+      const updatedPlan = await tx.subscriptionPlans.update({
         where: { id: planId },
         data: {
           name,
-          price,
-          duration_days,
+          price: Number(price),
+          duration_days: Number(duration_days),
           description,
           plan_type,
           button_text,
           slug,
-          features: mergedFeatures,
+          features,
         },
       });
 
-      res.json({
-        success: true,
-        message: "Subscription plan updated",
-        data: updatedPlan,
+      // Reset existing links
+      await tx.courses.updateMany({
+        where: { plan_id: planId },
+        data: { plan_id: null },
       });
-    } catch (error) {
-      console.error("Update Plan Error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  },
+
+      // Update with NEW links
+      if (courseIds.length > 0) {
+        const bigIntCourseIds = courseIds.map(id => BigInt(id));
+        
+        await tx.courses.updateMany({
+          where: { id: { in: bigIntCourseIds } },
+          data: { plan_id: planId },
+        });
+      }
+
+      return updatedPlan;
+    });
+
+    res.json({
+      success: true,
+      message: "Subscription plan updated",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Update Plan Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+},
 
   /* ----------------------------------------------------
    * STUDENT: GET ACTIVE SUBSCRIPTION OVERVIEW
@@ -161,6 +174,7 @@ const subscriptionController = {
           planName: subscription.SubscriptionPlans.name,
           endDate: subscription.end_date,
           status: subscription.status,
+          features: subscription.SubscriptionPlans.features,
         },
       });
     } catch (error) {

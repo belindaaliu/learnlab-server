@@ -41,6 +41,12 @@ const getRecommendations = async (req, res) => {
         CourseTags: true,
         Categories: true,
         Users: { select: { first_name: true, last_name: true } },
+        SubscriptionPlans: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
@@ -68,11 +74,48 @@ const getRecommendations = async (req, res) => {
       const popular = await prisma.courses.findMany({
         orderBy: { enrollments_count: "desc" },
         take: 6,
+        include: {
+          SubscriptionPlans: {
+            select: { id: true, name: true },
+          },
+        },
       });
       return res.json(popular);
     }
 
-    res.json(topRecommended);
+    // res.json(topRecommended);
+    
+    const formatted = topRecommended.map((course) => ({
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      price: course.price,
+      thumbnail_url:
+        course.thumbnail_url ||
+        "https://images.unsplash.com/photo-1587620962725-abab7fe55159",
+      rating: 4.8,
+      reviews: course.views || 0,
+      level: course.level,
+      Categories: course.Categories
+        ? { name: course.Categories.name }
+        : null,
+      Users: course.Users
+        ? {
+            first_name: course.Users.first_name,
+            last_name: course.Users.last_name,
+          }
+        : null,
+      // critical for CourseCard:
+      SubscriptionPlans: course.SubscriptionPlans
+        ? {
+            id: course.SubscriptionPlans.id,
+            name: course.SubscriptionPlans.name,
+          }
+        : null,
+      required_plan_name: course.required_plan_name || null,
+    }));
+
+    res.json(formatted);
 
   } catch (error) {
     console.error("Recommendation error:", error);

@@ -1,3 +1,4 @@
+
 const prisma = require("../lib/prisma");
 
 async function getCart(userId) {
@@ -5,38 +6,55 @@ async function getCart(userId) {
     const items = await prisma.ShoppingCart.findMany({
       where: { user_id: BigInt(userId) },
       include: {
-        Courses: true, 
+        Courses: {
+          include: {
+            Users: true, 
+          },
+        },
       },
     });
 
     let total = 0;
-    const cartItems = items.map((item) => {
-      if (!item.Courses) return null;
 
-      const coursePrice = item.Courses.price ? Number(item.Courses.price) : 0;
-      total += coursePrice;
+    const cartItems = items
+      .map((item) => {
+        if (!item.Courses) return null;
 
-      return {
-        id: item.id.toString(),
-        user_id: item.user_id.toString(),
-        course_id: item.course_id.toString(),
-        added_at: item.added_at,
-        course: {
-          id: item.Courses.id.toString(),
-          title: item.Courses.title,
-          price: coursePrice,
-          thumbnail_url: item.Courses.thumbnail_url,
-          image: item.Courses.thumbnail_url, 
-          instructor_id: item.Courses.instructor_id.toString(),
-          level: item.Courses.level
-        }
-      };
-    }).filter(Boolean);
+        const coursePrice = item.Courses.price
+          ? Number(item.Courses.price)
+          : 0;
+        total += coursePrice;
+
+        const instructorUser = item.Courses.Users || null;
+
+        return {
+          id: item.id.toString(),
+          user_id: item.user_id.toString(),
+          course_id: item.course_id.toString(),
+          added_at: item.added_at,
+          course: {
+            id: item.Courses.id.toString(),
+            title: item.Courses.title,
+            price: coursePrice,
+            thumbnail_url: item.Courses.thumbnail_url,
+            image: item.Courses.thumbnail_url,
+            instructor_id: item.Courses.instructor_id
+              ? item.Courses.instructor_id.toString()
+              : null,
+            instructor_name: instructorUser
+              ? `${instructorUser.first_name} ${instructorUser.last_name}`
+              : undefined,
+            Users: instructorUser || undefined,
+            level: item.Courses.level,
+          },
+        };
+      })
+      .filter(Boolean);
 
     return {
       items: cartItems,
       total: Number(total.toFixed(2)),
-      itemCount: cartItems.length
+      itemCount: cartItems.length,
     };
   } catch (err) {
     console.error("❌ Cart Service Get Error:", err);
@@ -52,7 +70,7 @@ async function addToCart(userId, courseId) {
 
   if (!course) throw new Error("Course not found");
 
-  if (BigInt(userId) === course.instructor_id) {
+  if (course.instructor_id && BigInt(userId) === course.instructor_id) {
     throw new Error("You cannot add your own course to the cart");
   }
 
@@ -85,5 +103,5 @@ async function removeFromCart(cartItemId, userId) {
 module.exports = {
   getCart,
   addToCart,
-  removeFromCart
+  removeFromCart,
 };
