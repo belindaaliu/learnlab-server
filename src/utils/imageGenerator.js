@@ -43,7 +43,7 @@ exports.generateSocialShareImage = async (studentName, courseTitle) => {
   // 4. Branding
   ctx.font = 'bold 30px Helvetica';
   ctx.fillStyle = '#ffffff88';
-  ctx.fillText('YourLearningPlatform.com', width / 2, 580);
+  ctx.fillText('Learnlab.ca', width / 2, 580);
 
   return canvas.toBuffer('image/png');
 };
