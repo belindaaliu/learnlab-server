@@ -553,9 +553,440 @@ const getFirstIncompleteLesson = async (req, res) => {
 };
 
 
+// =======================
+// GET ASSESSMENT DATA
+// =======================
+const getAssessmentData = async (req, res) => {
+  try {
+    const lessonId = Number(req.params.lessonId);
+    const userId = Number(req.user.userId);
+    const courseId = Number(req.params.courseId);
+
+    console.log("=== DEBUG: Fetching assessment ===");
+    console.log("Lesson ID:", lessonId);
+    console.log("Course ID:", courseId);
+    console.log("User ID:", userId);
+
+    // First, check if the lesson exists and is an assessment
+    const lesson = await prisma.courseContent.findUnique({
+      where: { id: BigInt(lessonId) },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        course_id: true
+      }
+    });
+
+    console.log("Found lesson:", lesson);
+
+    if (!lesson) {
+      console.log("ERROR: Lesson not found");
+      return res.status(404).json({ 
+        message: "Lesson not found",
+        debug: { lessonId, courseId }
+      });
+    }
+
+    if (lesson.type !== "assessment") {
+      console.log("ERROR: Lesson is not an assessment type");
+      return res.status(400).json({ 
+        message: "This lesson is not an assessment",
+        lessonType: lesson.type,
+        expectedType: "assessment"
+      });
+    }
+
+    if (Number(lesson.course_id) !== courseId) {
+      console.log("ERROR: Lesson doesn't belong to course");
+      return res.status(403).json({ 
+        message: "Lesson does not belong to this course",
+        lessonCourseId: Number(lesson.course_id),
+        requestedCourseId: courseId
+      });
+    }
+
+    // Get the assessment linked to this course content
+    const assessment = await prisma.assessments.findFirst({
+      where: { content_id: BigInt(lessonId) },
+      include: {
+        AssessmentQuestions: {
+          include: {
+            AssessmentOptions: {
+              select: {
+                id: true,
+                option_text: true
+              }
+            }
+          },
+          orderBy: { id: "asc" }
+        }
+      }
+    });
+
+    console.log("Found assessment:", assessment ? `Yes (ID: ${assessment.id})` : "No");
+
+    if (!assessment) {
+      console.log("ERROR: No assessment record found for this lesson");
+      return res.status(404).json({ 
+        message: "Assessment not found for this lesson",
+        details: "No assessment data exists in the database for this lesson",
+        lessonId: lessonId,
+        lessonTitle: lesson.title,
+        lessonType: lesson.type
+      });
+    }
+
+    console.log("Assessment has", assessment.AssessmentQuestions?.length || 0, "questions");
+
+    // Get user's previous attempt (if any)
+    const previousAttempt = await prisma.quizAttempts.findFirst({
+      where: {
+        user_id: BigInt(userId),
+        assessment_id: BigInt(assessment.id)
+      },
+      orderBy: { started_at: "desc" },
+      include: {
+        UserAnswers: true
+      }
+    });
+
+    console.log("Previous attempt:", previousAttempt ? `Yes (Score: ${previousAttempt.score}%)` : "No");
+
+    const questions = assessment.AssessmentQuestions.map(question => ({
+      id: Number(question.id),
+      question_text: question.question_text,
+      question_type: question.question_type,
+      options: question.AssessmentOptions.map(option => ({
+        id: Number(option.id),
+        option_text: option.option_text
+      })),
+      previous_answer: previousAttempt?.UserAnswers.find(
+        answer => Number(answer.question_id) === Number(question.id)
+      )
+    }));
+
+    const assessmentData = {
+      id: Number(assessment.id),
+      title: assessment.title || lesson.title || "Quiz",
+      instructions: assessment.instructions || "Complete the quiz to test your knowledge.",
+      total_questions: assessment.AssessmentQuestions.length,
+      questions: questions,
+      previous_attempt: previousAttempt ? {
+        id: Number(previousAttempt.id),
+        score: previousAttempt.score,
+        completed_at: previousAttempt.completed_at
+      } : null
+    };
+
+    console.log("=== DEBUG: Sending response ===");
+    console.log("Total questions:", assessmentData.total_questions);
+
+    res.json(assessmentData);
+  } catch (error) {
+    console.error("ERROR in getAssessmentData:", error);
+    res.status(500).json({ 
+      message: "Server error", 
+      error: error.message,
+      stack: error.stack
+    });
+  }
+};
 
 
+// =======================
+// SUBMIT QUIZ ATTEMPT
+// =======================
+const submitQuizAttempt = async (req, res) => {
+  try {
+    const userId = Number(req.user.userId);
+    const lessonId = Number(req.params.lessonId);
+    const { answers, time_taken } = req.body;
 
+    // Get assessment data with correct answers
+    const assessment = await prisma.assessments.findFirst({
+      where: { content_id: BigInt(lessonId) },
+      include: {
+        AssessmentQuestions: {
+          include: {
+            AssessmentOptions: {
+              where: { is_correct: true }
+            }
+          }
+        }
+      }
+    });
+
+    if (!assessment) {
+      return res.status(404).json({ message: "Assessment not found" });
+    }
+
+    // Calculate score
+    let correctCount = 0;
+    const totalQuestions = assessment.AssessmentQuestions.length;
+    
+    const userAnswers = [];
+    
+    for (const answer of answers) {
+      const question = assessment.AssessmentQuestions.find(
+        q => Number(q.id) === Number(answer.question_id)
+      );
+      
+      let is_correct = false;
+      
+      if (question) {
+        if (question.question_type === 'text') {
+          // For text questions, you might want to implement different logic
+          // For now, we'll consider all text answers as correct if they exist
+          is_correct = !!answer.answer_text;
+        } else if (question.question_type === 'truefalse') {
+          const correctOption = question.AssessmentOptions[0];
+          is_correct = Number(answer.selected_option_id) === Number(correctOption.id);
+        } else if (question.question_type === 'mcq') {
+          const correctOptions = question.AssessmentOptions;
+          is_correct = correctOptions.some(option => 
+            Number(option.id) === Number(answer.selected_option_id)
+          );
+        }
+        
+        if (is_correct) correctCount++;
+      }
+      
+      userAnswers.push({
+        question_id: answer.question_id,
+        selected_option_id: answer.selected_option_id,
+        answer_text: answer.answer_text,
+        is_correct
+      });
+    }
+
+    const score = Math.round((correctCount / totalQuestions) * 100);
+
+    // Create quiz attempt
+    const quizAttempt = await prisma.quizAttempts.create({
+      data: {
+        user_id: BigInt(userId),
+        assessment_id: BigInt(assessment.id),
+        score: score,
+        started_at: new Date(Date.now() - (time_taken * 1000)),
+        completed_at: new Date()
+      }
+    });
+
+    // Save user answers
+    for (const answer of userAnswers) {
+      await prisma.userAnswers.create({
+        data: {
+          attempt_id: BigInt(quizAttempt.id),
+          question_id: BigInt(answer.question_id),
+          selected_option_id: answer.selected_option_id ? BigInt(answer.selected_option_id) : null,
+          answer_text: answer.answer_text
+        }
+      });
+    }
+
+    // Mark lesson as completed if score meets requirements
+    // Assuming passing score is 55% based on your requirements
+    const passingScore = 55;
+    if (score >= passingScore) {
+      // Check if progress record exists
+      const existingProgress = await prisma.lessonProgress.findFirst({
+        where: {
+          user_id: BigInt(userId),
+          content_id: BigInt(lessonId)
+        }
+      });
+
+      if (existingProgress) {
+        await prisma.lessonProgress.update({
+          where: { id: existingProgress.id },
+          data: {
+            is_completed: true,
+            completed_at: new Date()
+          }
+        });
+      } else {
+        await prisma.lessonProgress.create({
+          data: {
+            user_id: BigInt(userId),
+            content_id: BigInt(lessonId),
+            is_completed: true,
+            completed_at: new Date()
+          }
+        });
+      }
+    }
+
+    res.json({
+      attempt_id: Number(quizAttempt.id),
+      score: score,
+      correct_count: correctCount,
+      total_questions: totalQuestions,
+      passed: score >= passingScore,
+      passing_score: passingScore,
+      user_answers: userAnswers
+    });
+
+  } catch (error) {
+    console.error("Error submitting quiz attempt:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// =======================
+// GET QUIZ RESULTS (UPDATED)
+// =======================
+const getQuizResults = async (req, res) => {
+  try {
+    const attemptId = Number(req.params.attemptId);
+    const userId = Number(req.user.userId);
+
+    const attempt = await prisma.quizAttempts.findUnique({
+      where: { id: BigInt(attemptId) },
+      include: {
+        Assessments: {
+          include: {
+            AssessmentQuestions: {
+              include: {
+                AssessmentOptions: true
+              }
+            },
+            CourseContent: {
+              include: {
+                Courses: {
+                  select: {
+                    id: true,
+                    title: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        UserAnswers: {
+          include: {
+            AssessmentQuestions: {
+              include: {
+                AssessmentOptions: true
+              }
+            },
+            AssessmentOptions: true
+          }
+        }
+      }
+    });
+
+    if (!attempt) {
+      return res.status(404).json({ message: "Attempt not found" });
+    }
+
+    // Verify user owns this attempt
+    if (Number(attempt.user_id) !== userId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // Get correct answers for comparison
+    const questionsWithAnswers = attempt.Assessments.AssessmentQuestions.map(question => {
+      const userAnswer = attempt.UserAnswers.find(
+        answer => Number(answer.question_id) === Number(question.id)
+      );
+      
+      const correctOptions = question.AssessmentOptions.filter(option => option.is_correct);
+      
+      return {
+        id: Number(question.id),
+        question_text: question.question_text,
+        question_type: question.question_type,
+        correct_options: correctOptions.map(option => ({
+          id: Number(option.id),
+          option_text: option.option_text
+        })),
+        user_answer: userAnswer ? {
+          selected_option_id: userAnswer.selected_option_id ? Number(userAnswer.selected_option_id) : null,
+          selected_option_text: userAnswer.AssessmentOptions?.option_text || null,
+          answer_text: userAnswer.answer_text,
+          is_correct: userAnswer.AssessmentOptions?.is_correct || false
+        } : null
+      };
+    });
+
+    const result = {
+      attempt_id: Number(attempt.id),
+      assessment_id: Number(attempt.Assessments.id),
+      score: attempt.score,
+      correct_count: Math.round((attempt.score / 100) * attempt.Assessments.AssessmentQuestions.length),
+      total_questions: attempt.Assessments.AssessmentQuestions.length,
+      passed: attempt.score >= 55, // Assuming 55% passing score
+      passing_score: 55,
+      started_at: attempt.started_at,
+      completed_at: attempt.completed_at,
+      time_taken: attempt.completed_at && attempt.started_at 
+        ? Math.round((new Date(attempt.completed_at) - new Date(attempt.started_at)) / 1000)
+        : null,
+      quiz_title: attempt.Assessments.title || attempt.Assessments.CourseContent.title,
+      course_title: attempt.Assessments.CourseContent.Courses.title,
+      course_id: Number(attempt.Assessments.CourseContent.Courses.id),
+      questions: questionsWithAnswers
+    };
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching quiz results:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// =======================
+// GET QUIZ INFO
+// =======================
+const getQuizInfo = async (req, res) => {
+  try {
+    const attemptId = Number(req.params.attemptId);
+    const userId = Number(req.user.userId);
+
+    const attempt = await prisma.quizAttempts.findUnique({
+      where: { id: BigInt(attemptId) },
+      include: {
+        Assessments: {
+          include: {
+            CourseContent: {
+              include: {
+                Courses: {
+                  select: {
+                    id: true,
+                    title: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!attempt) {
+      return res.status(404).json({ message: "Attempt not found" });
+    }
+
+    // Verify user owns this attempt
+    if (Number(attempt.user_id) !== userId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    const quizInfo = {
+      quiz_title: attempt.Assessments.title || attempt.Assessments.CourseContent.title,
+      course_title: attempt.Assessments.CourseContent.Courses.title,
+      course_id: Number(attempt.Assessments.CourseContent.Courses.id),
+      score: attempt.score,
+      passed: attempt.score >= 55
+    };
+
+    res.json(quizInfo);
+  } catch (error) {
+    console.error("Error fetching quiz info:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
 
 module.exports = {
   getCoursePlayerData,
@@ -567,5 +998,9 @@ module.exports = {
   markLessonIncomplete,
   getCompletedLessonIds,
   initializeCourseProgress,
-  getFirstIncompleteLesson
+  getFirstIncompleteLesson,
+  getAssessmentData,
+  submitQuizAttempt,
+  getQuizResults,
+  getQuizInfo
 };

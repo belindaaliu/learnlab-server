@@ -10,7 +10,11 @@ const {
   markLessonIncomplete,
   getCompletedLessonIds,
   initializeCourseProgress,
-  getFirstIncompleteLesson
+  getFirstIncompleteLesson,
+  getAssessmentData,
+  submitQuizAttempt,
+  getQuizResults,
+  getQuizInfo
 } = require("../controllers/coursePlayerController");
 
 const { authMiddleware } = require("../middleware/authMiddleware");
@@ -45,5 +49,19 @@ router.post("/:courseId/initialize-progress", authMiddleware, initializeCoursePr
 
 // Get first incomplete lesson
 router.get("/:courseId/first-incomplete", authMiddleware, getFirstIncompleteLesson);
+
+// Add these routes:
+
+// Get assessment data
+router.get("/:courseId/assessments/:lessonId", authMiddleware, getAssessmentData);
+
+// Submit quiz attempt
+router.post("/:courseId/assessments/:lessonId/submit", authMiddleware, submitQuizAttempt);
+
+// Get quiz results
+router.get("/quiz-results/:attemptId", authMiddleware, getQuizResults);
+
+// Get quiz info
+router.get("/quiz-info/:attemptId", authMiddleware, getQuizInfo);
 
 module.exports = router;
