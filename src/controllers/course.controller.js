@@ -257,13 +257,20 @@ exports.getInstructorCourses = async (req, res) => {
       },
       include: {
         Categories: true,
+                _count: {
+          select: {
+            Enrollments: true 
+          }
+        }
       }
     });
 
     // ✅ Fix Decimal Price
     const serializedCourses = courses.map(course => ({
         ...course,
-        price: parseFloat(course.price)
+        id: Number(course.id),
+        price: parseFloat(course.price),
+        student_count: course._count?.Enrollments || 0,
     }));
 
     res.json(serializedCourses);
