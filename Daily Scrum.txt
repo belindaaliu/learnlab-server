@@ -718,11 +718,17 @@ Modified Courselist, mylearning, recommended courses for above functionality
 Samira
 
 1. Done / not done since last scrum:
+Modify coursecard to allow wishlist add from card.
+Modify myLearning section - remove the "X" button
+Modified Courselist, mylearning, recommended courses for above functionality
 
 
 2. To do until next Scrum:
-
-
+Create Notification FE dropdown
+Create notification controller
+Assigne routes
+Modify DB schema to allow all the notification fields we need.
+Notification middlewaref
 
 3. Need assistance / figure things out
 
