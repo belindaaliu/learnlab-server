@@ -1,5 +1,5 @@
 const express = require("express");
-const { authMiddleware } = require("../middleware/authMiddleware");
+const { authMiddleware, optionalAuth } = require("../middleware/authMiddleware");
 const { 
   getProfile, 
   updateProfile, 
@@ -7,7 +7,10 @@ const {
   uploadResume,
   downloadResume,
   deleteResume,
-  getResumeInfo 
+  getResumeInfo,
+  searchUsers,
+  getInstructorCourses,
+  getPublicProfile 
 } = require("../controllers/userController");
 const multer = require("multer");
 const uploadResumeMiddleware = require("../middleware/uploadResume");
@@ -27,5 +30,12 @@ router.post("/upload-resume", authMiddleware, uploadResumeMiddleware.single("res
 router.get("/download-resume", authMiddleware, downloadResume);
 router.delete("/delete-resume", authMiddleware, deleteResume);
 router.get("/resume-info", authMiddleware, getResumeInfo);
+
+
+// SEARCH USERS - Public search (optional auth)
+router.get("/search", optionalAuth, searchUsers);
+
+router.get('/instructor/:id/courses', getInstructorCourses);
+router.get('/public-profile/:id', getPublicProfile);
 
 module.exports = router;
