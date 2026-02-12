@@ -777,10 +777,13 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Completed logic for certificate generation and verification
+- Implemented discount logic so admin can add discounts to courses and subscription.
 
 2. To do until next Scrum:
-
+- Complete subscription plan management by admin
+- Complete course management by admin
+- Work on Instructor features in admin panel
 
 3. Need assistance / figure things out
 
@@ -828,10 +831,13 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Completed course management by admin
+- Implemented discount on course and subscription plan so admin can manage discounts
+- Implemented course recommendations on the cart page
 
 2. To do until next Scrum:
-
+- Complete subscription plan management by admin
+- Work on Instructor features in admin panel
 
 3. Need assistance / figure things out
 

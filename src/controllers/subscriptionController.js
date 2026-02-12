@@ -1,4 +1,6 @@
 const prisma = require("../lib/prisma");
+const { Prisma } = require("@prisma/client");
+const { applyDiscount, getPlanPricing } = require("../utils/discount");
 
 const subscriptionController = {
   /* ----------------------------------------------------
@@ -12,7 +14,6 @@ const subscriptionController = {
 
       const formattedPlans = plans.map((plan) => {
         let features = plan.features;
-
         if (typeof features === "string") {
           try {
             features = JSON.parse(features);
@@ -25,6 +26,11 @@ const subscriptionController = {
           ...plan,
           id: plan.id.toString(),
           price: Number(plan.price),
+          discount_active: plan.discount_active,
+          discount_type: plan.discount_type,
+          discount_value: plan.discount_value,
+          discount_starts_at: plan.discount_starts_at,
+          discount_ends_at: plan.discount_ends_at,
           features: features || {},
         };
       });
@@ -50,6 +56,11 @@ const subscriptionController = {
         button_text,
         slug,
         courseIds,
+        discount_active,
+        discount_type,
+        discount_value,
+        discount_starts_at,
+        discount_ends_at,
       } = req.body;
 
       const result = await prisma.$transaction(async (tx) => {
@@ -64,6 +75,18 @@ const subscriptionController = {
             button_text,
             slug,
             features,
+            discount_active: !!discount_active,
+            discount_type: discount_type || null,
+            discount_value:
+              discount_value != null && discount_value !== ""
+                ? new Prisma.Decimal(discount_value)
+                : null,
+            discount_starts_at: discount_starts_at
+              ? new Date(discount_starts_at)
+              : null,
+            discount_ends_at: discount_ends_at
+              ? new Date(discount_ends_at)
+              : null,
           },
         });
 
@@ -89,65 +112,82 @@ const subscriptionController = {
   },
 
   updatePlan: async (req, res) => {
-  try {
-    const planId = BigInt(req.params.id);
-    const {
-      name,
-      price,
-      duration_days,
-      description,
-      plan_type,
-      button_text,
-      slug,
-      features,
-      courseIds = [] 
-    } = req.body;
+    try {
+      const planId = BigInt(req.params.id);
+      const {
+        name,
+        price,
+        duration_days,
+        description,
+        plan_type,
+        button_text,
+        slug,
+        features,
+        courseIds = [],
+        discount_active,
+        discount_type,
+        discount_value,
+        discount_starts_at,
+        discount_ends_at,
+      } = req.body;
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Update Plan Details
-      const updatedPlan = await tx.subscriptionPlans.update({
-        where: { id: planId },
-        data: {
-          name,
-          price: Number(price),
-          duration_days: Number(duration_days),
-          description,
-          plan_type,
-          button_text,
-          slug,
-          features,
-        },
-      });
-
-      // Reset existing links
-      await tx.courses.updateMany({
-        where: { plan_id: planId },
-        data: { plan_id: null },
-      });
-
-      // Update with NEW links
-      if (courseIds.length > 0) {
-        const bigIntCourseIds = courseIds.map(id => BigInt(id));
-        
-        await tx.courses.updateMany({
-          where: { id: { in: bigIntCourseIds } },
-          data: { plan_id: planId },
+      const result = await prisma.$transaction(async (tx) => {
+        // Update Plan Details
+        const updatedPlan = await tx.subscriptionPlans.update({
+          where: { id: planId },
+          data: {
+            name,
+            price: Number(price),
+            duration_days: Number(duration_days),
+            description,
+            plan_type,
+            button_text,
+            slug,
+            features,
+            discount_active: !!discount_active,
+            discount_type: discount_type || null,
+            discount_value:
+              discount_value != null && discount_value !== ""
+                ? new Prisma.Decimal(discount_value)
+                : null,
+            discount_starts_at: discount_starts_at
+              ? new Date(discount_starts_at)
+              : null,
+            discount_ends_at: discount_ends_at
+              ? new Date(discount_ends_at)
+              : null,
+          },
         });
-      }
 
-      return updatedPlan;
-    });
+        // Reset existing links
+        await tx.courses.updateMany({
+          where: { plan_id: planId },
+          data: { plan_id: null },
+        });
 
-    res.json({
-      success: true,
-      message: "Subscription plan updated",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Update Plan Error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-},
+        // Update with NEW links
+        if (courseIds.length > 0) {
+          const bigIntCourseIds = courseIds.map((id) => BigInt(id));
+
+          await tx.courses.updateMany({
+            where: { id: { in: bigIntCourseIds } },
+            data: { plan_id: planId },
+          });
+        }
+
+        return updatedPlan;
+      });
+
+      res.json({
+        success: true,
+        message: "Subscription plan updated",
+        data: result,
+      });
+    } catch (error) {
+      console.error("Update Plan Error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
 
   /* ----------------------------------------------------
    * STUDENT: GET ACTIVE SUBSCRIPTION OVERVIEW
@@ -217,58 +257,66 @@ const subscriptionController = {
    * STUDENT: SUBSCRIBE TO A PLAN
    * --------------------------------------------------*/
   subscribe: async (req, res) => {
-    try {
-      const { planId } = req.body;
-      const userId = BigInt(req.user.userId);
+  try {
+    const { planId } = req.body;
+    const userId = BigInt(req.user.userId);
 
-      const plan = await prisma.subscriptionPlans.findUnique({
-        where: { id: BigInt(planId) },
-      });
+    const plan = await prisma.subscriptionPlans.findUnique({
+      where: { id: BigInt(planId) },
+    });
 
-      if (!plan)
-        return res
-          .status(404)
-          .json({ success: false, message: "Plan not found" });
-
-      const result = await prisma.$transaction(async (tx) => {
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + plan.duration_days);
-
-        const newSub = await tx.subscriptions.create({
-          data: {
-            user_id: userId,
-            plan_id: BigInt(planId),
-            status: "active",
-            start_date: new Date(),
-            end_date: endDate,
-          },
-        });
-
-        await tx.payments.create({
-          data: {
-            user_id: userId,
-            subscription_plan_id: BigInt(planId),
-            amount: plan.price,
-            currency: "CAD",
-            method: "stripe",
-            status: "paid",
-            transaction_id: `sub_${Date.now()}`,
-          },
-        });
-
-        return newSub;
-      });
-
-      res.json({
-        success: true,
-        message: "Subscribed successfully!",
-        data: result,
-      });
-    } catch (error) {
-      console.error("Subscription Error:", error);
-      res.status(500).json({ success: false, message: error.message });
+    if (!plan) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Plan not found" });
     }
-  },
+
+    const pricing = getPlanPricing(plan);
+    const originalPrice = new Prisma.Decimal(pricing.originalPrice);
+    const discountAmount = new Prisma.Decimal(pricing.discountAmount);
+    const finalAmount = new Prisma.Decimal(pricing.finalPrice);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + plan.duration_days);
+
+      const newSub = await tx.subscriptions.create({
+        data: {
+          user_id: userId,
+          plan_id: BigInt(planId),
+          status: "active",
+          start_date: new Date(),
+          end_date: endDate,
+        },
+      });
+
+      await tx.payments.create({
+        data: {
+          user_id: userId,
+          subscription_plan_id: BigInt(planId),
+          amount: finalAmount,
+          original_amount: originalPrice,
+          discount_amount: discountAmount,
+          currency: "CAD",
+          method: "stripe",
+          status: "paid",
+          transaction_id: `sub_${Date.now()}`,
+        },
+      });
+
+      return newSub;
+    });
+
+    res.json({
+      success: true,
+      message: "Subscribed successfully!",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Subscription Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+},
 
   /* ----------------------------------------------------
    * STUDENT: CANCEL SUBSCRIPTION
