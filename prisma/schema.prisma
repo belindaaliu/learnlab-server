@@ -100,6 +100,11 @@ model Courses {
   description       String?            @db.Text
   category_id       BigInt
   price             Decimal?           @db.Decimal(10, 2)
+  discount_type     DiscountType?        
+  discount_value    Decimal?           @db.Decimal(10, 2) 
+  discount_active   Boolean?           @default(false)
+  discount_starts_at DateTime?         @db.Timestamp(0)
+  discount_ends_at   DateTime?         @db.Timestamp(0)
   thumbnail_url     String?            @db.VarChar(500)
   level             Courses_level      @default(beginner)
   views             Int?               @default(0)
@@ -113,6 +118,7 @@ model Courses {
   long_description  String?            @db.Text
   requirements      String?            @db.Text
   target_audience   String?            @db.Text
+  approval_status   CourseApprovalStatus @default(pending)
   Certificates      Certificates[]
   CourseContent     CourseContent[]
   CourseTags        CourseTags[]
@@ -205,6 +211,8 @@ model Payments {
   transaction_id       String?            @db.VarChar(255)
   created_at           DateTime?          @default(now()) @db.Timestamp(0)
   updated_at           DateTime?          @default(now()) @db.Timestamp(0)
+  original_amount      Decimal?           @db.Decimal(10, 2) 
+  discount_amount      Decimal?           @db.Decimal(10, 2)
   Courses              Courses?           @relation(fields: [course_id], references: [id], onUpdate: NoAction, map: "fk_payment_course")
   SubscriptionPlans    SubscriptionPlans? @relation(fields: [subscription_plan_id], references: [id], onUpdate: NoAction, map: "fk_payment_plan")
   Users                Users              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_payment_user")
@@ -268,6 +276,11 @@ model SubscriptionPlans {
   slug          String?                      @unique(map: "slug") @db.VarChar(50)
   features      Json?
   button_text   String?                      @db.VarChar(50)
+  discount_type      DiscountType?
+  discount_value     Decimal?                @db.Decimal(10, 2)
+  discount_active    Boolean?               @default(false)
+  discount_starts_at DateTime?              @db.Timestamp(0)
+  discount_ends_at   DateTime?              @db.Timestamp(0)
   Courses       Courses[]
   Payments      Payments[]
   Subscriptions Subscriptions[]
@@ -366,6 +379,11 @@ enum AssessmentQuestions_question_type {
 enum CourseTags_tag_type {
   topic
   keyword
+}
+
+enum DiscountType {
+  percent
+  fixed
 }
 
 enum Notifications_type {
