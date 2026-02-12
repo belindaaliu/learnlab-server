@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { notifyNewMessage } = require('../utils/notificationHelpers');
 
 const messageController = {
   // Get all conversations (grouped by other user)
@@ -179,6 +180,17 @@ const messageController = {
           is_read: false,
         },
       });
+
+      // Get sender info for notification
+      const sender = await prisma.users.findUnique({
+        where: { id: userId },
+        select: { first_name: true, last_name: true }
+      });
+
+      const senderName = `${sender.first_name} ${sender.last_name}`;
+
+      // Send notification to receiver
+      await notifyNewMessage(receiverId, senderName, message.id.toString());
 
       res.json({
         success: true,
