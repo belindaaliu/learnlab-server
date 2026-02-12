@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const { notifyCoursePurchase, notifyCourseEnrollment } = require("../utils/notificationHelpers");
 
 exports.createPaymentIntent = async (req, res) => {
   try {
@@ -126,6 +127,12 @@ exports.fulfillOrder = async (userId, courseIds, transactionId, amount) => {
     for (const cId of courseIds) {
       const courseId = BigInt(cId);
 
+      // Get course details for notification
+      const course = await tx.courses.findUnique({
+        where: { id: courseId },
+        select: { title: true }
+      });
+
       await tx.payments.create({
         data: {
           user_id: uId,
@@ -144,6 +151,9 @@ exports.fulfillOrder = async (userId, courseIds, transactionId, amount) => {
           course_id: courseId,
         },
       });
+
+      // Send notification for each course purchased
+      await notifyCoursePurchase(userId, course.title, cId);
     }
 
     await tx.shoppingCart.deleteMany({
