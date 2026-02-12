@@ -760,6 +760,11 @@ Samira
 - Instructor student list, instructor quiz review, student progress details added in front end in instructor panel.
 - instructor student progress controller and routes added in backend to GET STUDENT PROGRESS SUMMARY , GET DETAILED LESSON PROGRESS 
 ,GET QUIZ ATTEMPT HISTORY, GET STUDENT COURSE ACTIVITY, GET ENROLLED STUDENTS WITH PROGRESS, GET QUIZ ATTEMPT DETAILS FOR INSTRUCTOR
+- student layout changes in styles.
+- adding page" teach on learn lab" in frontend
+- upload resume added in Front end and backend. and styles in edit profile changed.
+- public profile page edited, now instructor and student can search their profile and see courses.
+
 
 2. To do until next Scrum:
 -fixing bugs.
