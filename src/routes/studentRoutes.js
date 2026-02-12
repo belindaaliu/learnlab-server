@@ -13,6 +13,7 @@ const {
   getEnrolledCoursesWithNextContent
 } = require("../controllers/Student/studentController");
 const { getRecommendations } = require("../controllers/Student/recommendationController");
+const { getFeaturedCourses } = require("../controllers/Student/featuredController");
 
 const router = express.Router();
 const upload = require("../middleware/uploadMiddleware");
@@ -44,5 +45,7 @@ router.get('/certificates/:courseId/download', authMiddleware, certController.do
 
 // Add this route
 router.get('/:id/enrolled-courses-next', getEnrolledCoursesWithNextContent);
+
+router.get("/:id/featured-courses", getFeaturedCourses);
 
 module.exports = router;
