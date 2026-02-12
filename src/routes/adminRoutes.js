@@ -42,6 +42,11 @@ router.get(
   "/courses/:courseId/review-data",
   adminController.getCourseReviewData,
 );
+router.get(
+  "/courses/:courseId/detail",
+  adminController.getCourseAdminDetail
+);
+router.put("/courses/:courseId", adminController.updateCoursePricing);
 router.patch("/courses/:courseId/status", adminController.updateCourseStatus);
 
 // --- USER MANAGEMENT (General) ---

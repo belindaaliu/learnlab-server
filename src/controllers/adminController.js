@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { getCoursePricing } = require("../utils/discount");
 
 const serialize = (data) =>
   JSON.parse(
@@ -13,7 +14,7 @@ exports.getDashboardStats = async (req, res) => {
     const { start, end } = req.query;
 
     const dateFilter = {};
-    const enrollmentDateFilter = {}; 
+    const enrollmentDateFilter = {};
 
     if (start && end) {
       const startDate = new Date(start);
@@ -53,7 +54,7 @@ exports.getDashboardStats = async (req, res) => {
         where: { ...dateFilter, status: "paid" },
       }),
       prisma.courses.count({ where: dateFilter }),
-      prisma.enrollments.count({ where: enrollmentDateFilter }), 
+      prisma.enrollments.count({ where: enrollmentDateFilter }),
     ]);
 
     //  Visual/Chart Data (Raw SQL)
@@ -188,7 +189,7 @@ exports.getAnalytics = async (req, res) => {
         ORDER BY incomplete DESC 
         LIMIT 10`,
 
-      // Most Active Learners 
+      // Most Active Learners
       prisma.$queryRaw`
         SELECT 
           u.id, 
@@ -201,7 +202,7 @@ exports.getAnalytics = async (req, res) => {
         ORDER BY completed_lessons DESC 
         LIMIT 10`,
 
-      // Financials: Revenue by Category 
+      // Financials: Revenue by Category
       prisma.$queryRaw`
         SELECT 
           c.name AS category, 
@@ -349,14 +350,155 @@ exports.getCourses = async (req, res) => {
         Users: { select: { first_name: true, last_name: true } },
         Categories: { select: { name: true } },
         SubscriptionPlans: {
-          select: { name: true }
-        }
+          select: { name: true },
+        },
       },
       orderBy: { created_at: "desc" },
     });
     res.json(serialize({ success: true, data: courses }));
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateCoursePricing = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const id = BigInt(courseId);
+
+    const {
+      price,
+      discount_active,
+      discount_type,
+      discount_value,
+      discount_starts_at,
+      discount_ends_at,
+    } = req.body;
+
+    const existing = await prisma.courses.findUnique({ where: { id } });
+    if (!existing) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Course not found" });
+    }
+
+    const updated = await prisma.courses.update({
+      where: { id },
+      data: {
+        price: price !== undefined ? Number(price) : existing.price,
+        discount_active: discount_active ?? false,
+        discount_type: discount_active ? discount_type : null,
+        discount_value:
+          discount_active && discount_value !== undefined
+            ? Number(discount_value)
+            : null,
+        discount_starts_at:
+          discount_active && discount_starts_at
+            ? new Date(discount_starts_at)
+            : null,
+        discount_ends_at:
+          discount_active && discount_ends_at
+            ? new Date(discount_ends_at)
+            : null,
+      },
+    });
+
+    return res.json(
+      serialize({
+        success: true,
+        message: "Course pricing updated by admin",
+        data: updated,
+      }),
+    );
+  } catch (error) {
+    console.error("Admin updateCoursePricing error:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to update course" });
+  }
+};
+
+
+// Get specific course details
+exports.getCourseAdminDetail = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { start, end } = req.query; 
+    const id = BigInt(courseId);
+
+    const course = await prisma.courses.findUnique({
+      where: { id },
+      include: {
+        Users: { select: { first_name: true, last_name: true, email: true } },
+        Categories: { select: { name: true } },
+      },
+    });
+
+    if (!course) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Course not found" });
+    }
+
+    // build date filter
+    const enrollmentWhere = { course_id: id };
+    const paymentWhere = { course_id: id, status: "paid" };
+
+    if (start && end) {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      if (!isNaN(startDate) && !isNaN(endDate)) {
+        enrollmentWhere.enrolled_at = {
+          gte: startDate,
+          lte: endDate,
+        };
+        paymentWhere.created_at = {
+          gte: startDate,
+          lte: endDate,
+        };
+      }
+    }
+
+    const [enrollmentCount, payments] = await Promise.all([
+      prisma.enrollments.count({
+        where: enrollmentWhere,
+      }),
+      prisma.payments.findMany({
+        where: paymentWhere,
+        select: { amount: true },
+      }),
+    ]);
+
+    const totalRevenue = payments.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0,
+    );
+
+    const pricing = getCoursePricing(course);
+
+    return res.json(
+      serialize({
+        success: true,
+        data: {
+          course: {
+            ...course,
+            price: Number(course.price || 0),
+          },
+          stats: {
+            enrollmentCount,
+            totalRevenue,
+            pricing,
+          },
+        },
+      }),
+    );
+  } catch (error) {
+    console.error("Admin course detail error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load course detail",
+    });
   }
 };
 
@@ -416,34 +558,34 @@ exports.updateCourseStatus = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     const { role, status, search, page = 1, limit = 20 } = req.query;
-    
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     // Build where clause
     const where = {};
-    
-    if (role && role !== '') {
+
+    if (role && role !== "") {
       where.role = role;
     }
-    
-  if (search && search.trim() !== '') {
-    const searchLower = search.toLowerCase();
-    where.OR = [
-      { first_name: { contains: searchLower } },
-      { last_name: { contains: searchLower } },
-      { email: { contains: searchLower } },
-    ];
-  }
 
-    console.log('Fetching users with filters:', { role, search, page, limit });
-    console.log('Where clause:', JSON.stringify(where, null, 2));
+    if (search && search.trim() !== "") {
+      const searchLower = search.toLowerCase();
+      where.OR = [
+        { first_name: { contains: searchLower } },
+        { last_name: { contains: searchLower } },
+        { email: { contains: searchLower } },
+      ];
+    }
+
+    console.log("Fetching users with filters:", { role, search, page, limit });
+    console.log("Where clause:", JSON.stringify(where, null, 2));
 
     const [users, totalCount] = await Promise.all([
       prisma.users.findMany({
         where,
         skip,
         take: parseInt(limit),
-        orderBy: { created_at: 'desc' },
+        orderBy: { created_at: "desc" },
         select: {
           id: true,
           first_name: true,
@@ -459,8 +601,8 @@ exports.getAllUsers = async (req, res) => {
       prisma.users.count({ where }),
     ]);
 
-    console.log('Found users:', users.length);
-    console.log('Total count:', totalCount);
+    console.log("Found users:", users.length);
+    console.log("Total count:", totalCount);
 
     res.json(
       serialize({
@@ -472,7 +614,7 @@ exports.getAllUsers = async (req, res) => {
           limit: parseInt(limit),
           totalPages: Math.ceil(totalCount / parseInt(limit)),
         },
-      })
+      }),
     );
   } catch (error) {
     console.error("Get All Users Error:", error);
@@ -483,7 +625,7 @@ exports.getAllUsers = async (req, res) => {
 exports.getUserDetail = async (req, res) => {
   try {
     const { userId } = req.params;
-    
+
     const user = await prisma.users.findUnique({
       where: { id: BigInt(userId) },
       include: {
@@ -494,26 +636,31 @@ exports.getUserDetail = async (req, res) => {
                 id: true,
                 title: true,
                 price: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
         Payments: {
-          where: { status: 'paid' },
+          where: { status: "paid" },
           select: {
             amount: true,
             created_at: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     // Calculate stats
-    const totalSpent = user.Payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalSpent = user.Payments.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0,
+    );
     const enrollmentCount = user.Enrollments.length;
 
     res.json(
@@ -524,9 +671,9 @@ exports.getUserDetail = async (req, res) => {
           stats: {
             totalSpent,
             enrollmentCount,
-          }
-        }
-      })
+          },
+        },
+      }),
     );
   } catch (error) {
     console.error("Get User Detail Error:", error);
@@ -539,7 +686,7 @@ exports.updateUserRole = async (req, res) => {
     const { userId } = req.params;
     const { role } = req.body;
 
-    if (!['student', 'instructor', 'admin'].includes(role)) {
+    if (!["student", "instructor", "admin"].includes(role)) {
       return res.status(400).json({ success: false, message: "Invalid role" });
     }
 
@@ -553,7 +700,7 @@ exports.updateUserRole = async (req, res) => {
         success: true,
         message: `User role updated to ${role}`,
         data: updatedUser,
-      })
+      }),
     );
   } catch (error) {
     console.error("Update User Role Error:", error);
