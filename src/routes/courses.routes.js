@@ -73,4 +73,11 @@ router.put('/:id/sections/:sectionId/reorder', authMiddleware, requireApprovedIn
 // Fix order index
 router.post("/:id/fix-order", authMiddleware, requireApprovedInstructor, courseController.fixCourseOrderIndex);
 
+// Increment course views
+router.put('/:id/views', courseController.incrementCourseViews);
+
+// Increment/decrement enrollment count
+// router.put('/:id/enrollments/increment', courseController.incrementEnrollmentCount);
+// router.put('/:id/enrollments/decrement', courseController.decrementEnrollmentCount);
+
 module.exports = router;
