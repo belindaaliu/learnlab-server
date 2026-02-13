@@ -308,16 +308,39 @@ exports.getAnalytics = async (req, res) => {
 // --- INSTRUCTOR & COURSE MANAGEMENT ---
 exports.getInstructors = async (req, res) => {
   try {
-    const { status } = req.query;
+    const rawStatus = req.query.status;
+    const status = rawStatus && rawStatus.trim() !== "" ? rawStatus.trim() : null;
+
+    const where = {
+      role: { in: ["student", "instructor"] },
+    };
+
+    if (status) {
+      // specific filter: pending / approved / rejected
+      where.instructor_application_status = status;
+    } else {
+      // "All instructors" = users who have applied (exclude "none")
+      where.instructor_application_status = { in: ["pending", "approved", "rejected"] };
+    }
+
     const instructors = await prisma.users.findMany({
-      where: {
-        role: "instructor",
-        ...(status && { instructor_application_status: status }),
-      },
+      where,
       orderBy: { instructor_application_submitted_at: "desc" },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        photo_url: true,
+        role: true,
+        instructor_application_status: true,
+        instructor_application_submitted_at: true,
+      },
     });
+
     res.json(serialize({ success: true, data: instructors }));
   } catch (error) {
+    console.error("getInstructors error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -418,12 +441,11 @@ exports.updateCoursePricing = async (req, res) => {
   }
 };
 
-
 // Get specific course details
 exports.getCourseAdminDetail = async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { start, end } = req.query; 
+    const { start, end } = req.query;
     const id = BigInt(courseId);
 
     const course = await prisma.courses.findUnique({
@@ -470,10 +492,7 @@ exports.getCourseAdminDetail = async (req, res) => {
       }),
     ]);
 
-    const totalRevenue = payments.reduce(
-      (sum, p) => sum + Number(p.amount),
-      0,
-    );
+    const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount), 0);
 
     const pricing = getCoursePricing(course);
 

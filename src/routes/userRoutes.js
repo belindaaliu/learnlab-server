@@ -10,7 +10,8 @@ const {
   getResumeInfo,
   searchUsers,
   getInstructorCourses,
-  getPublicProfile 
+  getPublicProfile,
+  applyAsInstructor, 
 } = require("../controllers/userController");
 const multer = require("multer");
 const uploadResumeMiddleware = require("../middleware/uploadResume");
@@ -21,6 +22,9 @@ const upload = multer(); // For photo
 // GET and UPDATE profile using the token (no ID needed)
 router.get("/me", authMiddleware, getProfile);
 router.put("/me", authMiddleware, updateProfile);
+
+// ---------------- APPLY AS INSTRUCTOR ----------------
+router.post("/instructor-applications/apply", authMiddleware, applyAsInstructor, );
 
 // Photo upload
 router.post("/upload-photo", authMiddleware, upload.single("photo"), uploadPhoto);

@@ -22,6 +22,8 @@ const getProfile = async (req, res) => {
         interests: true,
         resume_url: true,
         photo_url: true,
+        instructor_application_status: true,
+        instructor_admin_comment: true,
       },
     });
 
@@ -70,6 +72,61 @@ const updateProfile = async (req, res) => {
   } catch (err) {
     console.error("UPDATE PROFILE ERROR:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ---------------- APPLY AS INSTRUCTOR ----------------
+const applyAsInstructor = async (req, res) => {
+  try {
+    const userId = Number(req.user.userId);
+
+    const user = await prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        instructor_application_status: true,
+        instructor_application_submitted_at: true,
+      },
+    });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    if (user.instructor_application_status === "pending") {
+      return res.status(400).json({
+        success: false,
+        message: "Your application is already under review.",
+      });
+    }
+
+    if (user.instructor_application_status === "approved") {
+      return res.status(400).json({
+        success: false,
+        message: "You are already approved as an instructor.",
+      });
+    }
+
+    const updated = await prisma.users.update({
+      where: { id: userId },
+      data: {
+        instructor_application_status: "pending",
+        instructor_application_submitted_at: new Date(),
+      },
+      select: {
+        instructor_application_status: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Instructor application submitted.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("applyAsInstructor error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -575,5 +632,6 @@ module.exports = {
   getResumeInfo,
   searchUsers,
   getInstructorCourses,
+  applyAsInstructor,
   getPublicProfile 
 };
