@@ -14,6 +14,7 @@ const uploadRoutes = require('./routes/upload.routes');
 const userRoutes = require('./routes/userRoutes');
 const categoryRoutes = require('./routes/categoriesRoutes');
 const instructorStudentProgress = require('./routes/instructorStudentProgress');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
 
@@ -55,6 +56,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
 
 app.use('/api', instructorStudentProgress);
+
+app.use('/api/notifications', notificationRoutes);
 
 
 module.exports = app;

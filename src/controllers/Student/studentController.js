@@ -1,6 +1,7 @@
 const prisma = require("../../lib/prisma");
 const crypto = require("crypto");
 const s3 = require("../../lib/s3");
+const { notifyWishlistAdd } = require('../../utils/notificationHelpers');
 
 // ---------------- GET CURRENT USER ----------------
 const getCurrentUser = async (req, res) => {
@@ -323,6 +324,16 @@ const addCourseToWishlist = async (req, res) => {
       },
     });
 
+    // FETCH COURSE DETAILS FOR NOTIFICATION
+    const course = await prisma.courses.findUnique({
+      where: { id: Number(finalCourseId) }
+    });
+
+    // Send notification
+    if (course) {
+      await notifyWishlistAdd(userId, course.title, finalCourseId);
+    }
+    
     res.status(201).json({
       success: true,
       message: "Course added to wishlist",

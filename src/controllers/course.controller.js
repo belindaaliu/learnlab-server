@@ -586,7 +586,7 @@ exports.createLesson = async (req, res) => {
 exports.updateLesson = async (req, res) => {
   try {
     const { id, lessonId } = req.params;
-    const { title, is_preview, video_url, note_content } = req.body;
+    const { title, is_preview, video_url, note_content, duration_seconds } = req.body;
     const instructorId = req.user.userId;
 
     const lesson = await prisma.courseContent.findUnique({
@@ -613,6 +613,7 @@ exports.updateLesson = async (req, res) => {
         is_preview: is_preview !== undefined ? is_preview : lesson.is_preview,
         video_url: video_url !== undefined ? video_url : lesson.video_url,
         note_content: note_content !== undefined ? note_content : lesson.note_content,
+        duration_seconds: duration_seconds !== undefined ? parseInt(duration_seconds) : lesson.duration_seconds,
       },
     });
 
