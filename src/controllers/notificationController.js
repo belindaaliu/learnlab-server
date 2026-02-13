@@ -1,3 +1,5 @@
+const prisma = require('../lib/prisma');
+
 // Get all notifications for a user
 exports.getNotifications = async (req, res) => {
   try {
