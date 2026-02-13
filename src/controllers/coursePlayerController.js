@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { checkAndIssueCertificate } = require("../utils/certificateHelper");
+const { notifyCertificateIssued } = require("../utils/notificationHelpers");
 
 // =======================
 // GET COURSE PLAYER DATA
@@ -260,6 +261,21 @@ const markLessonComplete = async (req, res) => {
 
     // Check certificate after marking lesson complete
     const certResult = await checkAndIssueCertificate(userId, courseId);
+
+    // Send notification if certificate was issued
+    if (certResult.issued && certResult.certificate) {
+      const course = await prisma.courses.findUnique({
+        where: { id: BigInt(courseId) },
+        select: { title: true }
+      });
+      
+      await notifyCertificateIssued(
+        userId, 
+        course.title, 
+        courseId, 
+        `/student/certificates`
+      );
+    }
 
     res.json({
       message: "Lesson marked complete",
