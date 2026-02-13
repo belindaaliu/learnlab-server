@@ -989,3 +989,123 @@ exports.fixCourseOrderIndex = async (req, res) => {
     res.status(500).json({ message: "Server Error fixing order index" });
   }
 };
+
+// ==========================================
+// 21. INCREMENT COURSE VIEWS
+// ==========================================
+exports.incrementCourseViews = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const courseId = parseInt(id);
+    
+    if (isNaN(courseId)) {
+      return res.status(400).json({ message: "Invalid Course ID" });
+    }
+
+    // Increment the views counter
+    const updatedCourse = await prisma.courses.update({
+      where: { id: courseId },
+      data: {
+        views: {
+          increment: 1
+        }
+      },
+      select: {
+        id: true,
+        views: true
+      }
+    });
+
+    res.json({ 
+      success: true, 
+      message: "View count incremented",
+      views: updatedCourse.views 
+    });
+  } catch (error) {
+    console.error("Error incrementing course views:", error);
+    // Don't return error to client - this is a non-critical operation
+    res.status(500).json({ 
+      success: false, 
+      message: "Could not increment view count",
+      error: error.message 
+    });
+  }
+};
+
+// ==========================================
+// 22. INCREMENT ENROLLMENT COUNT
+// ==========================================
+// exports.incrementEnrollmentCount = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const courseId = parseInt(id);
+    
+//     if (isNaN(courseId)) {
+//       return res.status(400).json({ message: "Invalid Course ID" });
+//     }
+
+//     const updatedCourse = await prisma.courses.update({
+//       where: { id: courseId },
+//       data: {
+//         enrollments_count: {
+//           increment: 1
+//         }
+//       },
+//       select: {
+//         id: true,
+//         enrollments_count: true
+//       }
+//     });
+
+//     res.json({ 
+//       success: true, 
+//       message: "Enrollment count incremented",
+//       enrollments_count: updatedCourse.enrollments_count 
+//     });
+//   } catch (error) {
+//     console.error("Error incrementing enrollment count:", error);
+//     res.status(500).json({ 
+//       success: false, 
+//       message: "Could not increment enrollment count" 
+//     });
+//   }
+// };
+
+// // ==========================================
+// // 23. DECREMENT ENROLLMENT COUNT
+// // ==========================================
+// exports.decrementEnrollmentCount = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const courseId = parseInt(id);
+    
+//     if (isNaN(courseId)) {
+//       return res.status(400).json({ message: "Invalid Course ID" });
+//     }
+
+//     const updatedCourse = await prisma.courses.update({
+//       where: { id: courseId },
+//       data: {
+//         enrollments_count: {
+//           decrement: 1
+//         }
+//       },
+//       select: {
+//         id: true,
+//         enrollments_count: true
+//       }
+//     });
+
+//     res.json({ 
+//       success: true, 
+//       message: "Enrollment count decremented",
+//       enrollments_count: updatedCourse.enrollments_count 
+//     });
+//   } catch (error) {
+//     console.error("Error decrementing enrollment count:", error);
+//     res.status(500).json({ 
+//       success: false, 
+//       message: "Could not decrement enrollment count" 
+//     });
+//   }
+// };
