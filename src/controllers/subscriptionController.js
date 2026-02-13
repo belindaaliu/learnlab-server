@@ -1,5 +1,5 @@
 const prisma = require("../lib/prisma");
-const { Prisma } = require("@prisma/client");
+const { Prisma, Subscriptions_status } = require("@prisma/client");
 const { applyDiscount, getPlanPricing } = require("../utils/discount");
 
 const subscriptionController = {
@@ -196,7 +196,7 @@ const subscriptionController = {
     try {
       const userId = BigInt(req.user.userId);
       const subscription = await prisma.subscriptions.findFirst({
-        where: { user_id: userId, status: "active" },
+        where: { user_id: userId, status: Subscriptions_status.active },
         include: { SubscriptionPlans: true },
       });
 
@@ -215,6 +215,9 @@ const subscriptionController = {
           endDate: subscription.end_date,
           status: subscription.status,
           features: subscription.SubscriptionPlans.features,
+          autoRenew: subscription.auto_renew,
+          nextPlanId: subscription.next_plan_id,
+          nextAutoRenew: subscription.next_auto_renew,
         },
       });
     } catch (error) {
@@ -257,66 +260,67 @@ const subscriptionController = {
    * STUDENT: SUBSCRIBE TO A PLAN
    * --------------------------------------------------*/
   subscribe: async (req, res) => {
-  try {
-    const { planId } = req.body;
-    const userId = BigInt(req.user.userId);
+    try {
+      const { planId, autoRenew } = req.body;
+      const userId = BigInt(req.user.userId);
 
-    const plan = await prisma.subscriptionPlans.findUnique({
-      where: { id: BigInt(planId) },
-    });
+      const plan = await prisma.subscriptionPlans.findUnique({
+        where: { id: BigInt(planId) },
+      });
 
-    if (!plan) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Plan not found" });
+      if (!plan) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Plan not found" });
+      }
+
+      const pricing = getPlanPricing(plan);
+      const originalPrice = new Prisma.Decimal(pricing.originalPrice);
+      const discountAmount = new Prisma.Decimal(pricing.discountAmount);
+      const finalAmount = new Prisma.Decimal(pricing.finalPrice);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + plan.duration_days);
+
+        const newSub = await tx.subscriptions.create({
+          data: {
+            user_id: userId,
+            plan_id: BigInt(planId),
+            status: Subscriptions_status.active,
+            start_date: new Date(),
+            end_date: endDate,
+            auto_renew: !!autoRenew,
+          },
+        });
+
+        await tx.payments.create({
+          data: {
+            user_id: userId,
+            subscription_plan_id: BigInt(planId),
+            amount: finalAmount,
+            original_amount: originalPrice,
+            discount_amount: discountAmount,
+            currency: "CAD",
+            method: "stripe",
+            status: "paid",
+            transaction_id: `sub_${Date.now()}`,
+          },
+        });
+
+        return newSub;
+      });
+
+      res.json({
+        success: true,
+        message: "Subscribed successfully!",
+        data: result,
+      });
+    } catch (error) {
+      console.error("Subscription Error:", error);
+      res.status(500).json({ success: false, message: error.message });
     }
-
-    const pricing = getPlanPricing(plan);
-    const originalPrice = new Prisma.Decimal(pricing.originalPrice);
-    const discountAmount = new Prisma.Decimal(pricing.discountAmount);
-    const finalAmount = new Prisma.Decimal(pricing.finalPrice);
-
-    const result = await prisma.$transaction(async (tx) => {
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() + plan.duration_days);
-
-      const newSub = await tx.subscriptions.create({
-        data: {
-          user_id: userId,
-          plan_id: BigInt(planId),
-          status: "active",
-          start_date: new Date(),
-          end_date: endDate,
-        },
-      });
-
-      await tx.payments.create({
-        data: {
-          user_id: userId,
-          subscription_plan_id: BigInt(planId),
-          amount: finalAmount,
-          original_amount: originalPrice,
-          discount_amount: discountAmount,
-          currency: "CAD",
-          method: "stripe",
-          status: "paid",
-          transaction_id: `sub_${Date.now()}`,
-        },
-      });
-
-      return newSub;
-    });
-
-    res.json({
-      success: true,
-      message: "Subscribed successfully!",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Subscription Error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-},
+  },
 
   /* ----------------------------------------------------
    * STUDENT: CANCEL SUBSCRIPTION
@@ -328,10 +332,10 @@ const subscriptionController = {
       const updated = await prisma.subscriptions.updateMany({
         where: {
           user_id: userId,
-          status: "active",
+          status: Subscriptions_status.active, // enum, not "active"
         },
         data: {
-          status: "cancelled",
+          status: Subscriptions_status.canceled, // enum, matches schema spelling
         },
       });
 
@@ -371,7 +375,7 @@ const subscriptionController = {
 
       // Prevent deleting plans that users are currently subscribed to
       const activeUsers = await prisma.subscriptions.count({
-        where: { plan_id: planId, status: "active" },
+        where: { plan_id: planId, status: Subscriptions_status.active },
       });
 
       if (activeUsers > 0) {
@@ -392,6 +396,80 @@ const subscriptionController = {
       });
     } catch (error) {
       console.error("Delete Plan Error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  toggleAutoRenew: async (req, res) => {
+    try {
+      const userId = BigInt(req.user.userId);
+      const { autoRenew } = req.body;
+
+      const updated = await prisma.subscriptions.updateMany({
+        where: { user_id: userId, status: Subscriptions_status.active },
+        data: { auto_renew: !!autoRenew },
+      });
+
+      if (updated.count === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "No active subscription found" });
+      }
+
+      res.json({ success: true, data: { autoRenew: !!autoRenew } });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // STUDENT: SCHEDULE PLAN CHANGE AT RENEWAL
+  schedulePlanChange: async (req, res) => {
+    try {
+      const userId = BigInt(req.user.userId);
+      const { planId, autoRenew } = req.body;
+
+      // validate target plan
+      const targetPlan = await prisma.subscriptionPlans.findUnique({
+        where: { id: BigInt(planId) },
+      });
+      if (!targetPlan) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Target plan not found" });
+      }
+
+      // find active subscription
+      const subscription = await prisma.subscriptions.findFirst({
+        where: { user_id: userId, status: Subscriptions_status.active },
+      });
+
+      if (!subscription) {
+        return res.status(400).json({
+          success: false,
+          message: "No active subscription to schedule a change on.",
+        });
+      }
+
+      // store scheduled change
+      const updated = await prisma.subscriptions.update({
+        where: { id: subscription.id },
+        data: {
+          next_plan_id: BigInt(planId),
+          next_auto_renew:
+            autoRenew != null ? !!autoRenew : subscription.auto_renew,
+        },
+      });
+
+      res.json({
+        success: true,
+        message: "Plan change scheduled for next billing period.",
+        data: {
+          nextPlanId: updated.next_plan_id?.toString(),
+          nextAutoRenew: updated.next_auto_renew,
+        },
+      });
+    } catch (error) {
+      console.error("Schedule plan change error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   },

@@ -8,5 +8,8 @@ router.get("/plans", subController.getPlans);
 router.get("/history", authMiddleware, subController.getHistory);
 router.post("/subscribe", authMiddleware, subController.subscribe);
 router.post('/cancel', authMiddleware, subController.cancelSubscription);
+router.post("/auto-renew", authMiddleware, subController.toggleAutoRenew );
+router.post("/schedule-plan-change", authMiddleware, subController.schedulePlanChange );
+
 
 module.exports = router;
