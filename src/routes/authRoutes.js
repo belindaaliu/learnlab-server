@@ -59,4 +59,8 @@ router.post('/forgot-password', authController.forgotPassword);
  */
 router.post('/reset-password', authController.resetPassword);
 
+router.post('/user-mfa-methods', authController.getUserMfaMethods);
+router.post('/resend-mfa-code', authController.resendMfaCode);
+router.post('/verify-mfa', authController.verifyMfa);
+
 module.exports = router;

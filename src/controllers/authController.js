@@ -2,9 +2,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const emailService = require('../services/emailService');
+const speakeasy = require('speakeasy'); // Add this
 
 const prisma = new PrismaClient();
-
 
 const authController = {
   /**
@@ -129,9 +129,14 @@ const authController = {
         });
       }
 
-      // Find user
+      // Find user with MFA methods
       const user = await prisma.users.findUnique({
         where: { email: email.toLowerCase() },
+        include: {
+          MultiFactorAuth: {
+            where: { is_enabled: true }
+          }
+        }
       });
 
       if (!user) {
@@ -151,7 +156,38 @@ const authController = {
         });
       }
 
-      // Generate tokens
+      // Check if user has MFA enabled
+      const hasMfa = user.MultiFactorAuth && user.MultiFactorAuth.length > 0;
+      
+      if (hasMfa) {
+        // Generate temporary token for MFA verification (valid for 10 minutes)
+        const tempToken = jwt.sign(
+          { 
+            userId: user.id, 
+            email: user.email,
+            mfaRequired: true 
+          },
+          process.env.JWT_SECRET,
+          { expiresIn: '10m' }
+        );
+
+        // Store MFA methods in session or temp storage
+        const mfaMethods = user.MultiFactorAuth.map(m => ({
+          type: m.mfa_type,
+          enabled: m.is_enabled
+        }));
+
+        return res.status(200).json({
+          success: true,
+          mfaRequired: true,
+          tempToken,
+          userId: user.id,
+          email: user.email,
+          mfaMethods
+        });
+      }
+
+      // No MFA - proceed with normal login
       const accessToken = jwt.sign(
         { userId: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET,
@@ -165,7 +201,7 @@ const authController = {
       );
 
       // Remove password from response
-      const { password_hash, ...userWithoutPassword } = user;
+      const { password_hash, MultiFactorAuth, ...userWithoutPassword } = user;
 
       res.status(200).json({
         success: true,
@@ -182,6 +218,228 @@ const authController = {
         success: false,
         message: 'Server error during login',
         error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Get user's MFA methods (for verification page)
+   * POST /api/auth/user-mfa-methods
+   */
+  getUserMfaMethods: async (req, res) => {
+    try {
+      const { userId, email } = req.body;
+
+      const user = await prisma.users.findUnique({
+        where: { id: userId },
+        include: {
+          MultiFactorAuth: {
+            where: { is_enabled: true }
+          }
+        }
+      });
+
+      if (!user || user.email !== email) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      const methods = {
+        email: { enabled: false },
+        sms: { enabled: false, phone: null },
+        authenticator: { enabled: false }
+      };
+
+      user.MultiFactorAuth.forEach(method => {
+        if (method.mfa_type === 'email') {
+          methods.email = { enabled: true };
+        } else if (method.mfa_type === 'sms') {
+          methods.sms = { enabled: true, phone: method.secret_key };
+        } else if (method.mfa_type === 'authenticator') {
+          methods.authenticator = { enabled: true };
+        }
+      });
+
+      res.json({
+        success: true,
+        data: methods
+      });
+    } catch (error) {
+      console.error('Get MFA methods error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  },
+
+  /**
+   * Resend MFA verification code
+   * POST /api/auth/resend-mfa-code
+   */
+  resendMfaCode: async (req, res) => {
+    try {
+      const { userId, method } = req.body;
+
+      const user = await prisma.users.findUnique({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      // Generate 6-digit code
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store code in temporary storage (you can use Redis or a temp table)
+      // For now, we'll use a simple in-memory store (not for production)
+      if (!global.mfaCodes) global.mfaCodes = {};
+      global.mfaCodes[`${userId}_${method}`] = {
+        code,
+        expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
+      };
+
+      if (method === 'email') {
+        await emailService.sendMfaCode(user.email, code);
+      } else if (method === 'sms') {
+        // Get phone from database
+        const mfaMethod = await prisma.multiFactorAuth.findFirst({
+          where: {
+            user_id: userId,
+            mfa_type: 'sms'
+          }
+        });
+        
+        if (mfaMethod?.secret_key) {
+          // Implement SMS sending here
+          console.log(`SMS code for ${mfaMethod.secret_key}: ${code}`);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'Verification code sent'
+      });
+    } catch (error) {
+      console.error('Resend MFA code error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send verification code'
+      });
+    }
+  },
+
+  /**
+   * Verify MFA code and complete login
+   * POST /api/auth/verify-mfa
+   */
+  verifyMfa: async (req, res) => {
+    try {
+      const { userId, code, method, tempToken } = req.body;
+
+      // Verify temp token
+      try {
+        const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+        if (!decoded.mfaRequired || decoded.userId !== userId) {
+          return res.status(401).json({
+            success: false,
+            message: 'Invalid verification session'
+          });
+        }
+      } catch (err) {
+        return res.status(401).json({
+          success: false,
+          message: 'Session expired. Please login again.'
+        });
+      }
+
+      // Get user's MFA settings
+      const mfaMethod = await prisma.multiFactorAuth.findFirst({
+        where: {
+          user_id: userId,
+          mfa_type: method,
+          is_enabled: true
+        }
+      });
+
+      if (!mfaMethod) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid MFA method'
+        });
+      }
+
+      // Verify code based on method
+      let isValid = false;
+
+      if (method === 'authenticator') {
+        // Verify TOTP code
+        isValid = speakeasy.totp.verify({
+          secret: mfaMethod.secret_key,
+          encoding: 'base32',
+          token: code,
+          window: 1
+        });
+      } else {
+        // Verify email/SMS code from temporary storage
+        const storedData = global.mfaCodes?.[`${userId}_${method}`];
+        if (storedData && storedData.code === code && storedData.expiresAt > Date.now()) {
+          isValid = true;
+          // Clear used code
+          delete global.mfaCodes[`${userId}_${method}`];
+        }
+      }
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid verification code'
+        });
+      }
+
+      // Get full user data
+      const user = await prisma.users.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          first_name: true,
+          last_name: true,
+          photo_url: true,
+        }
+      });
+
+      // Generate final tokens
+      const accessToken = jwt.sign(
+        { userId: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+      );
+
+      const refreshToken = jwt.sign(
+        { userId: user.id },
+        process.env.JWT_REFRESH_SECRET,
+        { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
+      );
+
+      res.json({
+        success: true,
+        accessToken,
+        refreshToken,
+        user
+      });
+    } catch (error) {
+      console.error('MFA verification error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error during MFA verification'
       });
     }
   },
@@ -399,69 +657,69 @@ const authController = {
    * Request password reset
    * POST /api/auth/forgot-password
    */
-forgotPassword: async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required',
-      });
-    }
-
-    const user = await prisma.users.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-
-    if (!user) {
-      return res.status(200).json({
-        success: true,
-        message: 'If an account exists with that email, a password reset link has been sent',
-      });
-    }
-
-    // Generate reset token (valid for 1 hour)
-    const resetToken = jwt.sign(
-      { userId: user.id, purpose: 'password-reset' },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
-    // TEMPORARY: Log the reset link for testing
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-    console.log('🔗 Password reset link:', resetLink);
-    console.log('🎫 Reset token:', resetToken);
-
-    // Send password reset email
+  forgotPassword: async (req, res) => {
     try {
-      await emailService.sendPasswordResetEmail(user.email, resetToken);
-      
-      res.status(200).json({
-        success: true,
-        message: 'If an account exists with that email, a password reset link has been sent',
-        // TEMPORARY: Include token in response for testing
-        resetToken, // Remove this in production!
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email is required',
+        });
+      }
+
+      const user = await prisma.users.findUnique({
+        where: { email: email.toLowerCase() },
       });
-    } catch (emailError) {
-      console.error('Failed to send reset email:', emailError);
-      
-      res.status(200).json({
-        success: true,
-        message: 'If an account exists with that email, a password reset link has been sent',
-        // TEMPORARY: Include token even if email fails
-        resetToken, // Remove this in production!
+
+      if (!user) {
+        return res.status(200).json({
+          success: true,
+          message: 'If an account exists with that email, a password reset link has been sent',
+        });
+      }
+
+      // Generate reset token (valid for 1 hour)
+      const resetToken = jwt.sign(
+        { userId: user.id, purpose: 'password-reset' },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+
+      // TEMPORARY: Log the reset link for testing
+      const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+      console.log('🔗 Password reset link:', resetLink);
+      console.log('🎫 Reset token:', resetToken);
+
+      // Send password reset email
+      try {
+        await emailService.sendPasswordResetEmail(user.email, resetToken);
+        
+        res.status(200).json({
+          success: true,
+          message: 'If an account exists with that email, a password reset link has been sent',
+          // TEMPORARY: Include token in response for testing
+          resetToken, // Remove this in production!
+        });
+      } catch (emailError) {
+        console.error('Failed to send reset email:', emailError);
+        
+        res.status(200).json({
+          success: true,
+          message: 'If an account exists with that email, a password reset link has been sent',
+          // TEMPORARY: Include token even if email fails
+          resetToken, // Remove this in production!
+        });
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error during password reset request',
+        error: error.message,
       });
     }
-  } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during password reset request',
-      error: error.message,
-    });
-  }
-},
+  },
 
   /**
    * Reset password with token

@@ -45,6 +45,7 @@
     "qrcode": "^1.5.4",
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.7.0",
+    "speakeasy": "^2.0.0",
     "stripe": "^20.3.0"
   },
   "devDependencies": {

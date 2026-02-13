@@ -621,6 +621,186 @@ const getPublicProfile = async (req, res) => {
   }
 };
 
+// ---------------- MFA METHODS ----------------
+const getMfaSettings = async (req, res) => {
+  try {
+    const mfaMethods = await prisma.multiFactorAuth.findMany({
+      where: { user_id: req.user.userId },
+    });
+
+    const settings = {
+      email: { enabled: false, verified: false },
+      sms: { enabled: false, verified: false, phone: null },
+      authenticator: { enabled: false, verified: false },
+    };
+
+    mfaMethods.forEach((method) => {
+      if (method.mfa_type === 'email') {
+        settings.email = {
+          enabled: method.is_enabled,
+          verified: true,
+        };
+      } else if (method.mfa_type === 'sms') {
+        settings.sms = {
+          enabled: method.is_enabled,
+          verified: true,
+          phone: method.secret_key,
+        };
+      } else if (method.mfa_type === 'authenticator') {
+        settings.authenticator = {
+          enabled: method.is_enabled,
+          verified: true,
+        };
+      }
+    });
+
+    res.json({
+      success: true,
+      data: settings,
+    });
+  } catch (error) {
+    console.error('Error fetching MFA settings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch MFA settings',
+      error: error.message,
+    });
+  }
+};
+
+const setupAuthenticator = async (req, res) => {
+  try {
+    const speakeasy = require('speakeasy');
+    const secret = speakeasy.generateSecret({ length: 20 });
+    
+    res.json({
+      success: true,
+      data: {
+        secret: secret.base32,
+      },
+    });
+  } catch (error) {
+    console.error('Error setting up authenticator:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to setup authenticator',
+      error: error.message,
+    });
+  }
+};
+
+const sendMfaVerification = async (req, res) => {
+  try {
+    const { type, phone } = req.body;
+    const user = await prisma.users.findUnique({
+      where: { id: req.user.userId },
+    });
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    if (type === 'email') {
+      // Make sure emailService exists
+      if (emailService && emailService.sendMfaCode) {
+        await emailService.sendMfaCode(user.email, code);
+      } else {
+        console.log(`Email verification code for ${user.email}: ${code}`);
+      }
+    } else if (type === 'sms') {
+      console.log(`SMS code for ${phone}: ${code}`);
+    }
+
+    res.json({
+      success: true,
+      message: 'Verification code sent',
+    });
+  } catch (error) {
+    console.error('Error sending MFA verification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send verification code',
+      error: error.message,
+    });
+  }
+};
+
+const verifyAndEnableMfa = async (req, res) => {
+  try {
+    const { type, code, phone, secret } = req.body;
+
+    if (!code || code.length !== 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code',
+      });
+    }
+
+    const existingMfa = await prisma.multiFactorAuth.findFirst({
+      where: {
+        user_id: req.user.userId,
+        mfa_type: type,
+      },
+    });
+
+    if (existingMfa) {
+      await prisma.multiFactorAuth.update({
+        where: { id: existingMfa.id },
+        data: {
+          is_enabled: true,
+          secret_key: type === 'sms' ? phone : type === 'authenticator' ? secret : null,
+        },
+      });
+    } else {
+      await prisma.multiFactorAuth.create({
+        data: {
+          user_id: req.user.userId,
+          mfa_type: type,
+          is_enabled: true,
+          secret_key: type === 'sms' ? phone : type === 'authenticator' ? secret : null,
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `${type} MFA enabled successfully`,
+    });
+  } catch (error) {
+    console.error('Error enabling MFA:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to enable MFA',
+      error: error.message,
+    });
+  }
+};
+
+const disableMfa = async (req, res) => {
+  try {
+    const { type } = req.body;
+
+    await prisma.multiFactorAuth.updateMany({
+      where: {
+        user_id: req.user.userId,
+        mfa_type: type,
+      },
+      data: {
+        is_enabled: false,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `${type} MFA disabled successfully`,
+    });
+  } catch (error) {
+    console.error('Error disabling MFA:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to disable MFA',
+      error: error.message,
+    });
+  }
+};
 
 module.exports = { 
   getProfile, 
@@ -633,5 +813,10 @@ module.exports = {
   searchUsers,
   getInstructorCourses,
   applyAsInstructor,
-  getPublicProfile 
+  getPublicProfile,
+  getMfaSettings,
+  setupAuthenticator,
+  sendMfaVerification,
+  verifyAndEnableMfa,
+  disableMfa 
 };

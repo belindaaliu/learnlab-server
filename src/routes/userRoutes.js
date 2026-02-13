@@ -12,6 +12,11 @@ const {
   getInstructorCourses,
   getPublicProfile,
   applyAsInstructor, 
+  getMfaSettings,
+  setupAuthenticator,
+  sendMfaVerification,
+  verifyAndEnableMfa,
+  disableMfa
 } = require("../controllers/userController");
 const multer = require("multer");
 const uploadResumeMiddleware = require("../middleware/uploadResume");
@@ -41,5 +46,12 @@ router.get("/search", optionalAuth, searchUsers);
 
 router.get('/instructor/:id/courses', getInstructorCourses);
 router.get('/public-profile/:id', getPublicProfile);
+
+// In your users routes file
+router.get('/mfa/settings', authMiddleware, getMfaSettings);
+router.post('/mfa/setup-authenticator', authMiddleware, setupAuthenticator);
+router.post('/mfa/send-verification', authMiddleware, sendMfaVerification);
+router.post('/mfa/verify', authMiddleware, verifyAndEnableMfa);
+router.post('/mfa/disable', authMiddleware, disableMfa);
 
 module.exports = router;

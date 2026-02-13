@@ -100,6 +100,82 @@ const emailService = {
   },
 
   /**
+   * Send MFA verification code
+   */
+  sendMfaCode: async (email, code) => {
+    const mailOptions = {
+      from: `"LearnLab Security" <${process.env.EMAIL_FROM}>`,
+      to: email,
+      subject: 'Your Two-Factor Authentication Code',
+      html: `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background-color: #667eea; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; background-color: #f9f9f9; }
+              .code-box { 
+                background-color: #fff; 
+                border: 2px dashed #667eea;
+                padding: 20px; 
+                text-align: center; 
+                font-size: 32px; 
+                font-weight: bold;
+                letter-spacing: 5px;
+                margin: 20px 0;
+                border-radius: 8px;
+              }
+              .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>Two-Factor Authentication</h1>
+              </div>
+              <div class="content">
+                <p>Hello,</p>
+                <p>Your verification code is:</p>
+                <div class="code-box">${code}</div>
+                <p>This code will expire in 10 minutes.</p>
+                <p>If you didn't request this code, please ignore this email.</p>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} LearnLab. All rights reserved.</p>
+                <p>This is an automated email. Please do not reply.</p>
+              </div>
+            </div>
+          </body>
+        </html>
+      `,
+      text: `
+        Your Two-Factor Authentication Code
+        
+        Hello,
+        
+        Your verification code is: ${code}
+        
+        This code will expire in 10 minutes.
+        
+        If you didn't request this code, please ignore this email.
+        
+        © ${new Date().getFullYear()} LearnLab. All rights reserved.
+      `,
+    };
+
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      console.log('MFA email sent:', info.messageId);
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error('MFA email sending error:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Verify email configuration
    */
   verifyConnection: async () => {
