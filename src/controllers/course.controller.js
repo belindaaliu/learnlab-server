@@ -207,6 +207,17 @@ exports.getCourseById = async (req, res) => {
         },
         SubscriptionPlans: true, 
         CourseTags: true, // Fetches tags for frontend
+
+        _count: {
+          select: {
+            Enrollments: true 
+          }
+        },
+        Reviews: {
+          select: {
+            rating: true
+          }
+        },
         
         // Deep include for content and assessments
         CourseContent: {
