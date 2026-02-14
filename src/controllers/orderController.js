@@ -92,6 +92,7 @@ exports.createPaymentIntent = async (req, res) => {
 
 exports.stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
+  console.log("Stripe webhook hit, signature:", sig); 
   let event;
 
   try {
@@ -100,6 +101,7 @@ exports.stripeWebhook = async (req, res) => {
       sig,
       process.env.STRIPE_WEBHOOK_SECRET,
     );
+    console.log("Stripe event type:", event.type);
   } catch (err) {
     console.error(`Webhook Error: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -107,6 +109,7 @@ exports.stripeWebhook = async (req, res) => {
 
   if (event.type === "payment_intent.succeeded") {
     const intent = event.data.object;
+    console.log("payment_intent.succeeded metadata:", intent.metadata);
     const { type, userId, courseIds, planId, originalAmount } = intent.metadata;
 
     const finalAmount = intent.amount / 100;
@@ -142,6 +145,7 @@ exports.stripeWebhook = async (req, res) => {
 exports.fulfillOrder = async (
   userId,
   courseIds,
+  transactionId,
   finalAmount,
   originalAmount,
 ) => {
@@ -171,7 +175,7 @@ exports.fulfillOrder = async (
           currency: "CAD",
           method: "stripe",
           status: "paid",
-          transaction_id: intent.id, 
+          transaction_id: transactionId,
         },
       });
 

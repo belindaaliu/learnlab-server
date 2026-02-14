@@ -15,6 +15,7 @@ const userRoutes = require('./routes/userRoutes');
 const categoryRoutes = require('./routes/categoriesRoutes');
 const instructorStudentProgress = require('./routes/instructorStudentProgress');
 const notificationRoutes = require('./routes/notificationRoutes');
+const { stripeWebhook } = require('./controllers/orderController');
 
 const app = express();
 
@@ -22,7 +23,12 @@ const app = express();
 const seoMiddleware = require('./middleware/seoMiddleware');
 app.use(cors()); 
 
-app.use('/api/order/webhook', express.raw({ type: 'application/json' }));
+app.post(
+  "/api/webhooks/stripe",
+  express.raw({ type: "application/json" }),
+  stripeWebhook,
+);
+
 app.use(seoMiddleware);
 
 

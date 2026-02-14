@@ -24,4 +24,4 @@ dist/
 tmp/
 
 /src/generated/prisma
-src/controllers/myTodoController.js
+

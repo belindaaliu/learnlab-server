@@ -792,10 +792,13 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Completed Instructor application review.
+-Implemented subscription plan auto renewals and change of plans at end of current 
+subscription.
+-Fixed cart bugs after payment
 
 2. To do until next Scrum:
-
+- Work on Analytics in admin panel
 
 3. Need assistance / figure things out
 

@@ -309,7 +309,8 @@ exports.getAnalytics = async (req, res) => {
 exports.getInstructors = async (req, res) => {
   try {
     const rawStatus = req.query.status;
-    const status = rawStatus && rawStatus.trim() !== "" ? rawStatus.trim() : null;
+    const status =
+      rawStatus && rawStatus.trim() !== "" ? rawStatus.trim() : null;
 
     const where = {
       role: { in: ["student", "instructor"] },
@@ -320,7 +321,9 @@ exports.getInstructors = async (req, res) => {
       where.instructor_application_status = status;
     } else {
       // "All instructors" = users who have applied (exclude "none")
-      where.instructor_application_status = { in: ["pending", "approved", "rejected"] };
+      where.instructor_application_status = {
+        in: ["pending", "approved", "rejected"],
+      };
     }
 
     const instructors = await prisma.users.findMany({
@@ -482,7 +485,7 @@ exports.getCourseAdminDetail = async (req, res) => {
       }
     }
 
-    const [enrollmentCount, payments] = await Promise.all([
+    const [enrollmentCount, payments, enrollments] = await Promise.all([
       prisma.enrollments.count({
         where: enrollmentWhere,
       }),
@@ -490,11 +493,72 @@ exports.getCourseAdminDetail = async (req, res) => {
         where: paymentWhere,
         select: { amount: true },
       }),
+      prisma.enrollments.findMany({
+        where: { course_id: id },
+        select: {
+          id: true,
+          enrolled_at: true,
+          Users: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true,
+            },
+          },
+        },
+      }),
     ]);
 
     const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount), 0);
 
     const pricing = getCoursePricing(course);
+
+    // compute completion per user: all video lessons for course vs completed ones
+    const courseContent = await prisma.courseContent.findMany({
+      where: { course_id: id, type: "video" },
+      select: { id: true },
+    });
+
+    const contentIds = courseContent.map((c) => c.id);
+
+    let completionByUser = {};
+    if (contentIds.length > 0) {
+      const progress = await prisma.lessonProgress.groupBy({
+        by: ["user_id"],
+        where: {
+          content_id: { in: contentIds },
+          is_completed: true,
+        },
+        _count: { id: true },
+      });
+      completionByUser = progress.reduce((acc, row) => {
+        acc[row.user_id.toString()] = row._count.id;
+        return acc;
+      }, {});
+    }
+
+    const totalLessons = contentIds.length;
+
+    const enrolledStudents = enrollments.map((enr) => {
+      const userId = enr.Users.id.toString();
+      const completedCount = completionByUser[userId] || 0;
+      let status = "not_started";
+      if (totalLessons > 0) {
+        if (completedCount === 0) status = "not_started";
+        else if (completedCount < totalLessons) status = "in_progress";
+        else status = "completed";
+      }
+
+      return {
+        id: enr.id,
+        enrolled_at: enr.enrolled_at,
+        user: enr.Users,
+        status,
+        completedLessons: completedCount,
+        totalLessons,
+      };
+    });
 
     return res.json(
       serialize({
@@ -509,6 +573,7 @@ exports.getCourseAdminDetail = async (req, res) => {
             totalRevenue,
             pricing,
           },
+          enrolledStudents,
         },
       }),
     );
