@@ -143,30 +143,50 @@ exports.getDashboardStats = async (req, res) => {
 };
 
 // --- ANALYTICS ---
+const INSTRUCTOR_SHARE_PCT = 0.85; // 85% to instructors
+
+// --- ANALYTICS ---
 exports.getAnalytics = async (req, res) => {
   try {
+    const { start, end } = req.query;
+
+    let paymentsDateWhere = { status: "paid" };
+    let enrollmentsDateWhere = {};
+    let subsDateWhere = {};
+
+    if (start && end) {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      if (!isNaN(startDate) && !isNaN(endDate)) {
+        paymentsDateWhere.created_at = { gte: startDate, lte: endDate };
+        enrollmentsDateWhere.enrolled_at = { gte: startDate, lte: endDate };
+        subsDateWhere.start_date = { gte: startDate, lte: endDate };
+      }
+    }
+
     const [
-      mostEnrolledCourses,
-      highestRatedCourses,
+      highestRatedCoursesRaw,
       dropOffCourses,
       mostActiveLearners,
-      revenueByCategory,
       refundRate,
       totalPayments,
       quizStats,
       difficultQuestions,
-      revenueTrendData,
+      revenueTrendLast30Raw,
+      courses,
+      enrollCounts,
+      revenueByCategoryPayments,
+      // revenue splits
+      rangeRevenueAgg,
+      subscriptionRevenueAgg,
+      courseRevenueAgg,
+      otherRevenueAgg,
+      subscriptionRevenueByMonthGroup,
+      courseRevenueByMonthGroup,
+      subscriptionPopularityGroup,
     ] = await Promise.all([
-      // Top Courses by Enrollment
-      prisma.$queryRaw`
-        SELECT cs.id, cs.title, CAST(COUNT(e.id) AS UNSIGNED) AS enrollments 
-        FROM Courses cs 
-        LEFT JOIN Enrollments e ON e.course_id = cs.id 
-        GROUP BY cs.id, cs.title 
-        ORDER BY enrollments DESC 
-        LIMIT 10`,
-
-      // Highest Rated Courses
+      // Highest rated courses (all‑time)
       prisma.$queryRaw`
         SELECT cs.id, cs.title, CAST(AVG(r.rating) AS DECIMAL(10,2)) AS avg_rating 
         FROM Courses cs 
@@ -175,7 +195,7 @@ exports.getAnalytics = async (req, res) => {
         ORDER BY avg_rating DESC 
         LIMIT 10`,
 
-      // Drop-off Risk
+      // Drop-off risk (all‑time)
       prisma.$queryRaw`
         SELECT 
           cs.id, 
@@ -189,7 +209,7 @@ exports.getAnalytics = async (req, res) => {
         ORDER BY incomplete DESC 
         LIMIT 10`,
 
-      // Most Active Learners
+      // Most active learners (all‑time)
       prisma.$queryRaw`
         SELECT 
           u.id, 
@@ -202,24 +222,13 @@ exports.getAnalytics = async (req, res) => {
         ORDER BY completed_lessons DESC 
         LIMIT 10`,
 
-      // Financials: Revenue by Category
-      prisma.$queryRaw`
-        SELECT 
-          c.name AS category, 
-          CAST(SUM(p.amount) AS DOUBLE) AS total 
-        FROM Payments p 
-        JOIN Courses cs ON cs.id = p.course_id 
-        JOIN Categories c ON c.id = cs.category_id 
-        WHERE p.status = 'paid' 
-        GROUP BY c.name`,
-
-      // Global Refund Count
+      // Refund count (all‑time)
       prisma.payments.count({ where: { status: "refunded" } }),
 
-      // Total Payment Count
+      // Total payments count (all‑time)
       prisma.payments.count(),
 
-      // General Quiz Performance
+      // Quiz performance (all‑time)
       prisma.$queryRaw`
         SELECT 
           a.id, 
@@ -230,46 +239,275 @@ exports.getAnalytics = async (req, res) => {
         LEFT JOIN QuizAttempts qa ON qa.assessment_id = a.id 
         GROUP BY a.id, a.title`,
 
-      // Identifying Difficult Questions
+      // Difficult questions (all‑time) with course_id + course_title
       prisma.$queryRaw`
         SELECT 
-          q.id, 
-          q.question_text, 
-          CAST(AVG(CASE WHEN o.is_correct = 1 THEN 1.0 ELSE 0.0 END) AS DECIMAL(10,2)) AS correct_rate 
+          q.id,
+          q.question_text,
+          a.id AS assessment_id,
+          cs.id AS course_id,
+          cs.title AS course_title,
+          CAST(
+            AVG(
+              CASE WHEN o.is_correct = 1 THEN 1.0 ELSE 0.0 END
+            ) AS DECIMAL(10,2)
+          ) AS correct_rate
         FROM AssessmentQuestions q 
         JOIN UserAnswers ua ON ua.question_id = q.id 
         LEFT JOIN AssessmentOptions o ON ua.selected_option_id = o.id 
-        GROUP BY q.id, q.question_text 
+        JOIN Assessments a ON a.id = q.assessment_id 
+        JOIN CourseContent cc ON cc.id = a.content_id 
+        JOIN Courses cs ON cs.id = cc.course_id 
+        GROUP BY q.id, q.question_text, a.id, cs.id, cs.title 
         ORDER BY correct_rate ASC 
         LIMIT 10`,
 
-      // Trend Comparison: Current 30 days vs Previous 30 days
+      // Last 30 days vs previous 30 days (global trend, collected)
       prisma.$queryRaw`
         SELECT 
           CAST(SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN amount ELSE 0 END) AS DOUBLE) as currentPeriod,
           CAST(SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY) AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY) THEN amount ELSE 0 END) AS DOUBLE) as previousPeriod
         FROM Payments 
         WHERE status = 'paid'`,
+
+      // All courses (id + price)
+      prisma.courses.findMany({
+        select: { id: true, price: true },
+      }),
+
+      // Enrollment counts within date range (or all if no range)
+      prisma.enrollments.groupBy({
+        by: ["course_id"],
+        where: enrollmentsDateWhere,
+        _count: { id: true },
+      }),
+
+      // Payments for revenueByCategory (collected, courses only)
+      prisma.payments.findMany({
+        where: {
+          ...paymentsDateWhere,
+          course_id: { not: null },
+        },
+        select: {
+          amount: true,
+          Courses: {
+            select: {
+              Categories: { select: { name: true } },
+            },
+          },
+        },
+      }),
+
+      // Total paid in selected range (all collected revenue)
+      prisma.payments.aggregate({
+        _sum: { amount: true },
+        where: paymentsDateWhere,
+      }),
+
+      // Subscription revenue in selected range (collected)
+      prisma.payments.aggregate({
+        _sum: { amount: true },
+        where: {
+          ...paymentsDateWhere,
+          subscription_plan_id: { not: null },
+        },
+      }),
+
+      // Course revenue in selected range (collected)
+      prisma.payments.aggregate({
+        _sum: { amount: true },
+        where: {
+          ...paymentsDateWhere,
+          course_id: { not: null },
+        },
+      }),
+
+      // Other revenue in selected range (collected, no course & no sub plan)
+      prisma.payments.aggregate({
+        _sum: { amount: true },
+        where: {
+          ...paymentsDateWhere,
+          course_id: null,
+          subscription_plan_id: null,
+        },
+      }),
+
+      // Subscription revenue per payment in selected range (collected)
+      prisma.payments.groupBy({
+        by: ["created_at"],
+        where: {
+          ...paymentsDateWhere,
+          subscription_plan_id: { not: null },
+        },
+        _sum: { amount: true },
+      }),
+
+      // Course revenue per payment in selected range (collected)
+      prisma.payments.groupBy({
+        by: ["created_at"],
+        where: {
+          ...paymentsDateWhere,
+          course_id: { not: null },
+        },
+        _sum: { amount: true },
+      }),
+
+      // Subscription popularity within selected range
+      prisma.subscriptions.groupBy({
+        by: ["plan_id"],
+        where: {
+          status: "active",
+          ...subsDateWhere,
+        },
+        _count: { id: true },
+      }),
     ]);
 
-    // --- CALCULATE TREND & PREDICTION ---
-    const stats = revenueTrendData[0] || {
+    const toMonthKey = (d) => {
+      const jsDate = new Date(d);
+      return `${jsDate.getFullYear()}-${String(jsDate.getMonth() + 1).padStart(
+        2,
+        "0",
+      )}`;
+    };
+
+    // Most enrolled courses (date‑filtered)
+    const enrollCountMap = enrollCounts.reduce((acc, row) => {
+      acc[row.course_id.toString()] = row._count.id;
+      return acc;
+    }, {});
+    const mostEnrolledCourseIds = Object.keys(enrollCountMap).map((id) =>
+      BigInt(id),
+    );
+    const mostEnrolledMeta = mostEnrolledCourseIds.length
+      ? await prisma.courses.findMany({
+          where: { id: { in: mostEnrolledCourseIds } },
+          select: { id: true, title: true },
+        })
+      : [];
+    const courseTitleMap = mostEnrolledMeta.reduce((acc, c) => {
+      acc[c.id.toString()] = c.title;
+      return acc;
+    }, {});
+    const mostEnrolledCourses = Object.entries(enrollCountMap)
+      .map(([courseId, count]) => ({
+        id: BigInt(courseId),
+        title: courseTitleMap[courseId] || `Course ${courseId}`,
+        enrollments: count,
+      }))
+      .sort((a, b) => b.enrollments - a.enrollments)
+      .slice(0, 10);
+
+    const highestRatedCourses = highestRatedCoursesRaw;
+
+    // Revenue by category (collected, courses only)
+    const revenueByCategoryMap = {};
+    for (const p of revenueByCategoryPayments) {
+      const catName = p.Courses?.Categories?.name || "Uncategorized";
+      const amt = Number(p.amount || 0);
+      revenueByCategoryMap[catName] =
+        (revenueByCategoryMap[catName] || 0) + amt;
+    }
+    const revenueByCategory = Object.entries(revenueByCategoryMap).map(
+      ([category, total]) => ({ category, total }),
+    );
+
+    // Subscription revenue per month (collected)
+    const subscriptionRevenueByMonth = subscriptionRevenueByMonthGroup
+      .map((row) => ({
+        month: toMonthKey(row.created_at),
+        total: Number(row._sum.amount || 0),
+      }))
+      .reduce((acc, row) => {
+        const existing = acc.find((r) => r.month === row.month);
+        if (existing) existing.total += row.total;
+        else acc.push(row);
+        return acc;
+      }, []);
+
+    // Course revenue per month (collected)
+    const courseMonthMap = {};
+    for (const row of courseRevenueByMonthGroup) {
+      const key = toMonthKey(row.created_at);
+      const val = Number(row._sum.amount || 0);
+      courseMonthMap[key] = (courseMonthMap[key] || 0) + val;
+    }
+
+    // Subscription month map (collected)
+    const subMonthMap = {};
+    for (const row of subscriptionRevenueByMonthGroup) {
+      const key = toMonthKey(row.created_at);
+      const val = Number(row._sum.amount || 0);
+      subMonthMap[key] = (subMonthMap[key] || 0) + val;
+    }
+
+    const allMonths = Array.from(
+      new Set([...Object.keys(courseMonthMap), ...Object.keys(subMonthMap)]),
+    ).sort();
+
+    const monthlyRevenueCompare = allMonths.map((month) => ({
+      month,
+      courseRevenue: courseMonthMap[month] || 0,
+      subscriptionRevenue: subMonthMap[month] || 0,
+    }));
+
+    // Subscription popularity
+    const planIds = subscriptionPopularityGroup.map((s) => s.plan_id);
+    const plans =
+      planIds.length > 0
+        ? await prisma.subscriptionPlans.findMany({
+            where: { id: { in: planIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+    const planMap = plans.reduce((acc, p) => {
+      acc[p.id.toString()] = p.name;
+      return acc;
+    }, {});
+    const subscriptionPopularity = subscriptionPopularityGroup.map((row) => ({
+      plan_id: row.plan_id,
+      plan_name: planMap[row.plan_id.toString()] || `Plan ${row.plan_id}`,
+      active_subscriptions: row._count.id,
+    }));
+
+    // Trend based on last 30 vs previous 30 (collected)
+    const stats = revenueTrendLast30Raw[0] || {
       currentPeriod: 0,
       previousPeriod: 0,
     };
-    const current30Days = Number(stats.currentPeriod || 0);
-    const previous30Days = Number(stats.previousPeriod || 0);
-
-    // Calculate Trend Percentage
+    const currentPeriodFixed = Number(stats.currentPeriod || 0);
+    const previousPeriodFixed = Number(stats.previousPeriod || 0);
     let revenueTrend = 0;
-    if (previous30Days > 0) {
-      revenueTrend = ((current30Days - previous30Days) / previous30Days) * 100;
-    } else if (current30Days > 0) {
+    if (previousPeriodFixed > 0) {
+      revenueTrend =
+        ((currentPeriodFixed - previousPeriodFixed) / previousPeriodFixed) *
+        100;
+    } else if (currentPeriodFixed > 0) {
       revenueTrend = 100;
     }
 
-    // Calculate Predictive Revenue (Run Rate)
-    // Formula: (Total Revenue so far / Days passed) * Total days in month
+    // Collected revenue splits
+    const totalRevenue = Number(rangeRevenueAgg._sum.amount || 0); // all paid
+    const totalSubscriptionRevenue = Number(
+      subscriptionRevenueAgg._sum.amount || 0,
+    ); // subs only
+    const collectedCourseRevenue = Number(
+      courseRevenueAgg._sum.amount || 0,
+    ); // courses only
+    const otherRevenue = Number(otherRevenueAgg._sum.amount || 0); // neither
+
+    // Course revenue ceiling = price × enrollments (list‑price)
+    const enrollCountForRevenue = enrollCounts.reduce((acc, row) => {
+      acc[row.course_id.toString()] = row._count.id;
+      return acc;
+    }, {});
+    const totalCourseRevenueCeiling = courses.reduce((sum, c) => {
+      const price = Number(c.price || 0);
+      const count = enrollCountForRevenue[c.id.toString()] || 0;
+      return sum + price * count;
+    }, 0);
+
+    // Projected revenue based on collected totalRevenue
     const now = new Date();
     const dayOfMonth = now.getDate();
     const daysInMonth = new Date(
@@ -277,7 +515,12 @@ exports.getAnalytics = async (req, res) => {
       now.getMonth() + 1,
       0,
     ).getDate();
-    const projectedRevenue = (current30Days / dayOfMonth) * daysInMonth;
+    const projectedRevenue =
+      dayOfMonth > 0 ? (totalRevenue / dayOfMonth) * daysInMonth : 0;
+
+    // Instructor & platform share from collected total
+    const instructorShare = totalRevenue * INSTRUCTOR_SHARE_PCT;
+    const platformShare = totalRevenue - instructorShare;
 
     const analyticsData = {
       courseAnalytics: {
@@ -291,9 +534,22 @@ exports.getAnalytics = async (req, res) => {
         refundRate,
         refundPercentage:
           totalPayments === 0 ? 0 : (refundRate / totalPayments) * 100,
-        revenueTrend: revenueTrend,
-        currentMonthTotal: current30Days,
-        projectedRevenue: projectedRevenue,
+        revenueTrend,
+        currentMonthTotal: totalRevenue,
+        projectedRevenue,
+
+        totalRevenue, // courses + subs + other
+        collectedCourseRevenue,
+        totalSubscriptionRevenue,
+        otherRevenue,
+
+        totalCourseRevenueCeiling,
+
+        instructorShare, 
+        platformShare,
+        subscriptionRevenueByMonth,
+        subscriptionPopularity,
+        monthlyRevenueCompare,
       },
       engagementAnalytics: { quizStats, difficultQuestions },
     };
