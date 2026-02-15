@@ -45,9 +45,12 @@ const getRecommendations = async (req, res) => {
       ...purchasedTitles,
     ].filter(Boolean);
 
-    // Fetch all courses except purchased
+    // Fetch all courses except purchased - UPDATED WITH REVIEWS
     const allCourses = await prisma.courses.findMany({
-      where: { id: { notIn: purchasedIds } },
+      where: { 
+        id: { notIn: purchasedIds },
+        is_deleted: false
+      },
       include: {
         CourseTags: true,
         Categories: true,
@@ -58,6 +61,18 @@ const getRecommendations = async (req, res) => {
             name: true,
           },
         },
+        // ADD REVIEWS
+        Reviews: {
+          select: {
+            rating: true
+          }
+        },
+        // ADD ENROLLMENT COUNT
+        _count: {
+          select: {
+            Enrollments: true
+          }
+        }
       },
     });
 
@@ -94,23 +109,107 @@ const getRecommendations = async (req, res) => {
     // Limit to 12
     const topRecommended = recommended.slice(0, 12);
 
-    // Fallback: If nothing matched, show popular courses
+    // Fallback: If nothing matched, show popular courses - UPDATED WITH REVIEWS
     if (topRecommended.length === 0) {
       const popular = await prisma.courses.findMany({
+        where: { is_deleted: false },
         orderBy: { enrollments_count: "desc" },
         take: 6,
         include: {
+          Categories: true,
+          Users: { select: { first_name: true, last_name: true } },
           SubscriptionPlans: {
             select: { id: true, name: true },
           },
+          Reviews: {
+            select: { rating: true }
+          },
+          _count: {
+            select: { Enrollments: true }
+          }
         },
       });
-      return res.json(popular);
+
+      // Format popular courses with ratings
+      const formattedPopular = popular.map((course) => {
+        // Calculate rating
+        let averageRating = 0;
+        let reviewCount = 0;
+
+        if (course.Reviews && course.Reviews.length > 0) {
+          const totalRating = course.Reviews.reduce((sum, review) => sum + review.rating, 0);
+          averageRating = Number((totalRating / course.Reviews.length).toFixed(1));
+          reviewCount = course.Reviews.length;
+        }
+
+        const basePrice = Number(course.price || 0);
+        let finalPrice = basePrice;
+        let discountPercent = 0;
+
+        if (
+          course.discount_active &&
+          course.discount_type &&
+          course.discount_value != null
+        ) {
+          const now = new Date();
+          const starts = course.discount_starts_at ? new Date(course.discount_starts_at) : null;
+          const ends = course.discount_ends_at ? new Date(course.discount_ends_at) : null;
+          const inWindow = (!starts || starts <= now) && (!ends || ends >= now);
+
+          if (inWindow) {
+            if (course.discount_type === "percent") {
+              discountPercent = Number(course.discount_value);
+              finalPrice = Number((basePrice * (1 - discountPercent / 100)).toFixed(2));
+            } else if (course.discount_type === "fixed") {
+              const discountValue = Number(course.discount_value);
+              finalPrice = Math.max(0, Number((basePrice - discountValue).toFixed(2)));
+              discountPercent = basePrice > 0 ? Math.round(((basePrice - finalPrice) / basePrice) * 100) : 0;
+            }
+          }
+        }
+
+        return {
+          id: course.id,
+          title: course.title,
+          description: course.description,
+          price: basePrice,
+          discount_active: course.discount_active,
+          discount_type: course.discount_type,
+          discount_value: course.discount_value,
+          discount_starts_at: course.discount_starts_at,
+          discount_ends_at: course.discount_ends_at,
+          thumbnail_url: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159",
+          rating: averageRating,
+          reviews_count: reviewCount,
+          enrollments_count: course._count?.Enrollments || 0,
+          level: course.level,
+          Categories: course.Categories ? { name: course.Categories.name } : null,
+          Users: course.Users ? {
+            first_name: course.Users.first_name,
+            last_name: course.Users.last_name,
+          } : null,
+          SubscriptionPlans: course.SubscriptionPlans ? {
+            id: course.SubscriptionPlans.id,
+            name: course.SubscriptionPlans.name,
+          } : null,
+        };
+      });
+
+      return res.json(formattedPopular);
     }
 
-    // res.json(topRecommended);
-
+    // Format recommended courses with ratings
     const formatted = topRecommended.map((course) => {
+      // Calculate rating
+      let averageRating = 0;
+      let reviewCount = 0;
+
+      if (course.Reviews && course.Reviews.length > 0) {
+        const totalRating = course.Reviews.reduce((sum, review) => sum + review.rating, 0);
+        averageRating = Number((totalRating / course.Reviews.length).toFixed(1));
+        reviewCount = course.Reviews.length;
+      }
+
       const basePrice = Number(course.price || 0);
 
       // compute final price with discount
@@ -170,8 +269,9 @@ const getRecommendations = async (req, res) => {
         thumbnail_url:
           course.thumbnail_url ||
           "https://images.unsplash.com/photo-1587620962725-abab7fe55159",
-        rating: 4.8,
-        reviews: course.views || 0,
+        rating: averageRating, // CALCULATED from reviews
+        reviews_count: reviewCount, // ACTUAL count
+        enrollments_count: course._count?.Enrollments || 0,
         level: course.level,
         Categories: course.Categories ? { name: course.Categories.name } : null,
         Users: course.Users
