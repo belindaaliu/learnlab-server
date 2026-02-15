@@ -110,7 +110,7 @@ const recalculateOrderIndex = async (courseId) => {
 
 
 // ==========================================
-// 1. GET ALL COURSES (List & Search)
+// 1. GET ALL COURSES (List & Search) - UPDATED WITH REVIEWS
 // ==========================================
 exports.getAllCourses = async (req, res) => {
   try {
@@ -150,27 +150,55 @@ exports.getAllCourses = async (req, res) => {
       include: {
         Categories: true,
         SubscriptionPlans: true,
-        CourseTags: true, // Include tags in list view
+        CourseTags: true,
         Users: {
           select: {
             first_name: true,
             last_name: true,
           },
         },
+        // ADD REVIEWS
+        Reviews: {
+          select: {
+            rating: true
+          }
+        },
+        // ADD ENROLLMENT COUNT
+        _count: {
+          select: {
+            Enrollments: true
+          }
+        }
       },
     });
 
-    // Format Response
-    const formattedCourses = courses.map(course => ({
-      ...course,
-      price: parseFloat(course.price),
-      image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80", 
-      category: course.Categories ? course.Categories.name : 'Uncategorized',
-      instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : 'Unknown Instructor',
-      rating: 4.8, 
-      reviews: course.views, 
-      level: course.level
-    }));
+    // Format Response with calculated ratings
+    const formattedCourses = courses.map(course => {
+      // Calculate average rating from reviews
+      let averageRating = 0;
+      let reviewCount = 0;
+
+      if (course.Reviews && course.Reviews.length > 0) {
+        const totalRating = course.Reviews.reduce((sum, review) => sum + review.rating, 0);
+        averageRating = Number((totalRating / course.Reviews.length).toFixed(1));
+        reviewCount = course.Reviews.length;
+      }
+
+      return {
+        ...course,
+        price: parseFloat(course.price),
+        image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80", 
+        category: course.Categories ? course.Categories.name : 'Uncategorized',
+        instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : 'Unknown Instructor',
+        rating: averageRating, 
+        reviews_count: reviewCount,
+        enrollments_count: course._count?.Enrollments || 0,
+        level: course.level,
+        // Remove Reviews array from response to keep it clean
+        Reviews: undefined,
+        _count: undefined
+      };
+    });
 
     res.json(formattedCourses);
   } catch (error) {
@@ -180,7 +208,7 @@ exports.getAllCourses = async (req, res) => {
 };
 
 // ==========================================
-// 2. GET COURSE BY ID (Modified for Quiz Preview)
+// 2. GET COURSE BY ID (Modified for Quiz Preview) - UPDATED WITH RATING CALCULATION
 // ==========================================
 exports.getCourseById = async (req, res) => {
   try {
@@ -206,8 +234,7 @@ exports.getCourseById = async (req, res) => {
           }
         },
         SubscriptionPlans: true, 
-        CourseTags: true, // Fetches tags for frontend
-
+        CourseTags: true,
         _count: {
           select: {
             Enrollments: true 
@@ -218,8 +245,6 @@ exports.getCourseById = async (req, res) => {
             rating: true
           }
         },
-        
-        // Deep include for content and assessments
         CourseContent: {
           orderBy: { order_index: "asc" },
           include: {
@@ -241,12 +266,25 @@ exports.getCourseById = async (req, res) => {
       return res.status(404).json({ message: "Course not found" });
     }
 
+    // Calculate average rating
+    let averageRating = 0;
+    let reviewCount = 0;
+
+    if (course.Reviews && course.Reviews.length > 0) {
+      const totalRating = course.Reviews.reduce((sum, review) => sum + review.rating, 0);
+      averageRating = Number((totalRating / course.Reviews.length).toFixed(1));
+      reviewCount = course.Reviews.length;
+    }
+
     const planName = course.SubscriptionPlans?.name;
 
     res.json({
       ...course,
       required_plan_name: planName,
-      thumbnail_url: course.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80"
+      thumbnail_url: course.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80",
+      rating: averageRating,
+      reviews_count: reviewCount,
+      enrollments_count: course._count?.Enrollments || 0
     });
 
   } catch (error) {
