@@ -6,7 +6,7 @@ const { geminiModel } = require("../lib/gemini");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function generateContentWithRetry(model, prompt, maxRetries = 3) {
-  let delay = 2000; 
+  let delay = 2000;
   for (let i = 0; i < maxRetries; i++) {
     try {
       const result = await model.generateContent(prompt);
@@ -22,7 +22,7 @@ async function generateContentWithRetry(model, prompt, maxRetries = 3) {
           `Quota hit. Retrying in ${delay / 1000}s... (Attempt ${i + 1})`,
         );
         await sleep(delay);
-        delay *= 2; 
+        delay *= 2;
         continue;
       }
       throw err;
@@ -40,14 +40,17 @@ const safeStringify = (obj) => {
 router.post("/agent", async (req, res) => {
   try {
     const { message, range, activeTab, contextType } = req.body || {};
-    const baseUrl = process.env.BASE_URL || "http://localhost:5001";
+    const baseUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://learnlab-backend-174bc48b923f.herokuapp.com"
+        : process.env.BASE_URL || "http://localhost:5001";
     const authHeader = req.headers.authorization || "";
 
     let analytics = null;
     let plans = null;
     let subscriptionsSummary = null;
 
-    // Public subscription plans 
+    // Public subscription plans
     if (!contextType || contextType === "admin" || contextType === "plans") {
       const plansRes = await axios.get(`${baseUrl}/api/subscription/plans`);
       plans = plansRes.data?.data || plansRes.data;
@@ -71,7 +74,7 @@ router.post("/agent", async (req, res) => {
               "Your session has expired. Please log out and log back in to continue using the AI assistant.",
           });
         }
-        analytics = null; 
+        analytics = null;
       }
 
       // admin subscriptions summary route
