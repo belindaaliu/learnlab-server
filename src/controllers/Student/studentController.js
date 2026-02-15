@@ -418,6 +418,22 @@ const enrollCourse = async (req, res) => {
 
     await Promise.all(progressPromises);
 
+    // REMOVE FROM WISHLIST IF IT EXISTS
+    await prisma.userSavedCourses.deleteMany({
+      where: {
+        user_id: userId,
+        course_id: Number(course_id)
+      }
+    });
+
+    // REMOVE FROM CART IF IT EXISTS
+    await prisma.cartItems.deleteMany({
+      where: {
+        user_id: BigInt(userId),
+        course_id: BigInt(course_id)
+      }
+    });
+
     res.status(201).json({
       enrollment,
       lesson_progress_created: contents.length,
