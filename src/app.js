@@ -16,6 +16,7 @@ const categoryRoutes = require('./routes/categoriesRoutes');
 const instructorStudentProgress = require('./routes/instructorStudentProgress');
 const notificationRoutes = require('./routes/notificationRoutes');
 const { stripeWebhook } = require('./controllers/orderController');
+const aiAgentRoutes = require("./routes/aiAgent");
 
 const app = express();
 
@@ -64,6 +65,8 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api', instructorStudentProgress);
 
 app.use('/api/notifications', notificationRoutes);
+
+app.use("/api/ai", aiAgentRoutes);
 
 
 module.exports = app;
