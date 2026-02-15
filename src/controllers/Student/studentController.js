@@ -52,13 +52,22 @@ const getPurchasedCourses = async (req, res) => {
                 last_name: true
               }
             },
-            // Include CourseContent to count total lessons
             CourseContent: {
               where: {
-                type: { not: "section" } // Only count actual lessons, not sections
+                type: { not: "section" }
               },
               select: {
                 id: true
+              }
+            },
+            Reviews: {
+              select: {
+                rating: true
+              }
+            },
+            _count: {
+              select: {
+                Enrollments: true
               }
             }
           }
@@ -66,25 +75,32 @@ const getPurchasedCourses = async (req, res) => {
       }
     });
 
-    // Get completed lessons count for each course
     const coursesWithProgress = await Promise.all(
       enrollments.map(async (e) => {
         const course = e.Courses;
         
-        // Count completed lessons for this user in this course
         const completedLessons = await prisma.lessonProgress.count({
           where: {
             user_id: userId,
             is_completed: true,
             CourseContent: {
               course_id: course.id,
-              type: { not: "section" } // Only count non-section content
+              type: { not: "section" }
             }
           }
         });
 
-        // Count total lessons (non-section content)
         const totalLessons = course.CourseContent.length;
+
+        // Calculate rating
+        let averageRating = 0;
+        let reviewCount = 0;
+
+        if (course.Reviews && course.Reviews.length > 0) {
+          const totalRating = course.Reviews.reduce((sum, review) => sum + review.rating, 0);
+          averageRating = Number((totalRating / course.Reviews.length).toFixed(1));
+          reviewCount = course.Reviews.length;
+        }
 
         return {
           id: course.id,
@@ -96,16 +112,15 @@ const getPurchasedCourses = async (req, res) => {
             : "Unknown Instructor",
           total_lessons: totalLessons,
           completed_lessons: completedLessons,
-          // Add additional fields for frontend
           description: course.description,
           level: course.level,
-          rating: 4.5, // You might want to calculate this from Reviews
-          reviews: course.views || 0,
-          // Calculate duration if available in CourseContent
+          rating: averageRating,
+          reviews_count: reviewCount,
+          enrollments_count: course._count?.Enrollments || 0,
           duration: course.CourseContent.reduce((total, content) => {
             return total + (content.duration_seconds || 0);
-          }, 0) / 60, // Convert to minutes
-          category: course.category_id // You might want to include category name
+          }, 0) / 60,
+          category: course.category_id
         };
       })
     );
@@ -140,6 +155,16 @@ const getWishlistCourses = async (req, res) => {
               select: {
                 name: true
               }
+            },
+            Reviews: {
+              select: {
+                rating: true
+              }
+            },
+            _count: {
+              select: {
+                Enrollments: true
+              }
             }
           },
         },
@@ -148,21 +173,35 @@ const getWishlistCourses = async (req, res) => {
 
     console.log("Found saved courses:", saved.length);
 
-    // Format clean response for frontend
-    const courses = saved.map((s) => ({
-      id: s.Courses.id,
-      title: s.Courses.title,
-      description: s.Courses.description,
-      price: s.Courses.price,
-      thumbnail_url: s.Courses.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3",
-      instructor: s.Courses.Users
-        ? `${s.Courses.Users.first_name} ${s.Courses.Users.last_name}`
-        : "Unknown Instructor",
-      category: s.Courses.Categories?.name || "Uncategorized",
-      rating: 4.8,
-      reviews: s.Courses.views || 0,
-      level: s.Courses.level
-    }));
+    const courses = saved.map((s) => {
+      const course = s.Courses;
+      
+      // Calculate rating
+      let averageRating = 0;
+      let reviewCount = 0;
+
+      if (course.Reviews && course.Reviews.length > 0) {
+        const totalRating = course.Reviews.reduce((sum, review) => sum + review.rating, 0);
+        averageRating = Number((totalRating / course.Reviews.length).toFixed(1));
+        reviewCount = course.Reviews.length;
+      }
+
+      return {
+        id: course.id,
+        title: course.title,
+        description: course.description,
+        price: course.price,
+        thumbnail_url: course.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3",
+        instructor: course.Users
+          ? `${course.Users.first_name} ${course.Users.last_name}`
+          : "Unknown Instructor",
+        category: course.Categories?.name || "Uncategorized",
+        rating: averageRating,
+        reviews_count: reviewCount,
+        enrollments_count: course._count?.Enrollments || 0,
+        level: course.level
+      };
+    });
 
     console.log("Returning courses:", courses);
 
@@ -238,12 +277,25 @@ const searchCourses = async (req, res) => {
     const query = q.trim().toLowerCase();
 
     const courses = await prisma.courses.findMany({
+      where: {
+        is_deleted: false
+      },
       include: {
         Categories: true,
         Users: {
           select: { first_name: true, last_name: true },
         },
         CourseTags: true,
+        Reviews: {
+          select: {
+            rating: true
+          }
+        },
+        _count: {
+          select: {
+            Enrollments: true
+          }
+        }
       },
     });
 
@@ -261,18 +313,31 @@ const searchCourses = async (req, res) => {
       return titleMatch || subtitleMatch || descriptionMatch || categoryMatch || teacherMatch || tagMatch;
     });
 
-    const formattedCourses = filteredCourses.map((course) => ({
-      id: course.id,
-      title: course.title,
-      price: course.price,
-      image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159",
-      category: course.Categories ? course.Categories.name : "Uncategorized",
-      instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : "Unknown Instructor",
-      tags: course.CourseTags?.map(tag => tag.tag_name) || [],
-      rating: 4.8,
-      reviews: course.views,
-      level: course.level,
-    }));
+    const formattedCourses = filteredCourses.map((course) => {
+      // Calculate rating
+      let averageRating = 0;
+      let reviewCount = 0;
+
+      if (course.Reviews && course.Reviews.length > 0) {
+        const totalRating = course.Reviews.reduce((sum, review) => sum + review.rating, 0);
+        averageRating = Number((totalRating / course.Reviews.length).toFixed(1));
+        reviewCount = course.Reviews.length;
+      }
+
+      return {
+        id: course.id,
+        title: course.title,
+        price: course.price,
+        image: course.thumbnail_url || "https://images.unsplash.com/photo-1587620962725-abab7fe55159",
+        category: course.Categories ? course.Categories.name : "Uncategorized",
+        instructor: course.Users ? `${course.Users.first_name} ${course.Users.last_name}` : "Unknown Instructor",
+        tags: course.CourseTags?.map(tag => tag.tag_name) || [],
+        rating: averageRating,
+        reviews_count: reviewCount,
+        enrollments_count: course._count?.Enrollments || 0,
+        level: course.level,
+      };
+    });
 
     res.json(formattedCourses);
   } catch (error) {
@@ -293,7 +358,6 @@ const addCourseToWishlist = async (req, res) => {
       return res.status(400).json({ message: "courseId is required" });
     }
 
-    // Check if already in wishlist
     const exists = await prisma.userSavedCourses.findFirst({
       where: { 
         user_id: userId, 
@@ -305,7 +369,6 @@ const addCourseToWishlist = async (req, res) => {
       return res.status(400).json({ message: "Course already in wishlist" });
     }
 
-    // Check if already enrolled
     const enrollment = await prisma.enrollments.findFirst({
       where: {
         user_id: userId,
@@ -324,12 +387,10 @@ const addCourseToWishlist = async (req, res) => {
       },
     });
 
-    // FETCH COURSE DETAILS FOR NOTIFICATION
     const course = await prisma.courses.findUnique({
       where: { id: Number(finalCourseId) }
     });
 
-    // Send notification
     if (course) {
       await notifyWishlistAdd(userId, course.title, finalCourseId);
     }
@@ -384,7 +445,6 @@ const enrollCourse = async (req, res) => {
       return res.status(400).json({ message: "course_id is required" });
     }
 
-    // Check if already enrolled
     const alreadyEnrolled = await prisma.enrollments.findFirst({
       where: { user_id: userId, course_id: Number(course_id) },
     });
@@ -393,7 +453,6 @@ const enrollCourse = async (req, res) => {
       return res.status(400).json({ message: "User already enrolled in this course" });
     }
 
-    // Create enrollment
     const enrollment = await prisma.enrollments.create({
       data: {
         user_id: userId,
@@ -401,12 +460,10 @@ const enrollCourse = async (req, res) => {
       },
     });
 
-    // Fetch all course content
     const contents = await prisma.courseContent.findMany({
       where: { course_id: Number(course_id) },
     });
 
-    // Create LessonProgress entries
     const progressPromises = contents.map((content) =>
       prisma.lessonProgress.create({
         data: {
@@ -418,7 +475,6 @@ const enrollCourse = async (req, res) => {
 
     await Promise.all(progressPromises);
 
-    // REMOVE FROM WISHLIST IF IT EXISTS
     await prisma.userSavedCourses.deleteMany({
       where: {
         user_id: userId,
@@ -426,7 +482,6 @@ const enrollCourse = async (req, res) => {
       }
     });
 
-    // REMOVE FROM CART IF IT EXISTS
     await prisma.cartItems.deleteMany({
       where: {
         user_id: BigInt(userId),
@@ -450,7 +505,6 @@ const getEnrolledCoursesWithNextContent = async (req, res) => {
   try {
     const userId = Number(req.params.id);
 
-    // Get enrolled courses, ordered by enrollment date (newest first)
     const enrollments = await prisma.enrollments.findMany({
       where: { user_id: userId },
       include: {
@@ -465,7 +519,7 @@ const getEnrolledCoursesWithNextContent = async (req, res) => {
             },
             CourseContent: {
               where: {
-                type: { not: "section" } // Only actual content, not sections
+                type: { not: "section" }
               },
               orderBy: { order_index: "asc" },
               select: {
@@ -479,16 +533,14 @@ const getEnrolledCoursesWithNextContent = async (req, res) => {
           }
         }
       },
-      orderBy: { enrolled_at: 'desc' } // Order by enrollment date, newest first
+      orderBy: { enrolled_at: 'desc' }
     });
 
-    // Process each enrolled course
     const coursesWithProgress = await Promise.all(
       enrollments.map(async (enrollment) => {
         const course = enrollment.Courses;
         const contents = course.CourseContent;
         
-        // Get completed lessons for this course
         const completedLessons = await prisma.lessonProgress.findMany({
           where: {
             user_id: userId,
@@ -505,27 +557,24 @@ const getEnrolledCoursesWithNextContent = async (req, res) => {
           ? Math.round((completedIds.length / contents.length) * 100)
           : 0;
 
-        // Skip completed courses (progress = 100%)
         if (progress === 100) {
-          return null; // Will filter these out later
+          return null;
         }
 
-        // Find next content to complete
         let nextContent = null;
         for (const content of contents) {
           if (!completedIds.includes(Number(content.id))) {
             nextContent = {
               id: content.id,
               title: content.title,
-              type: content.type, // "lecture", "note", "quiz", etc.
+              type: content.type,
               order: content.order_index,
-              duration: content.duration_seconds ? Math.round(content.duration_seconds / 60) : null // Convert to minutes
+              duration: content.duration_seconds ? Math.round(content.duration_seconds / 60) : null
             };
             break;
           }
         }
 
-        // If all completed (shouldn't happen since we filtered progress=100, but just in case)
         if (!nextContent && contents.length > 0) {
           nextContent = {
             id: contents[0].id,
@@ -550,15 +599,14 @@ const getEnrolledCoursesWithNextContent = async (req, res) => {
           completedContent: completedIds.length,
           totalContent: contents.length,
           nextContent,
-          enrolled_at: enrollment.enrolled_at // Include enrollment date
+          enrolled_at: enrollment.enrolled_at
         };
       })
     );
 
-    // Filter out null values (completed courses) and get only last 3 uncompleted courses
     const uncompletedCourses = coursesWithProgress
-      .filter(course => course !== null) // Remove completed courses
-      .slice(0, 3); // Get only last 3 uncompleted courses
+      .filter(course => course !== null)
+      .slice(0, 3);
 
     res.json(uncompletedCourses);
 
