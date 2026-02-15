@@ -3,7 +3,7 @@ const prisma = require('../lib/prisma');
 // Get all notifications for a user
 exports.getNotifications = async (req, res) => {
   try {
-    const userId = req.user.userId; // CHANGED from req.user.id
+    const userId = req.user.userId;
     const { limit = 20, offset = 0 } = req.query;
 
     const notifications = await prisma.notifications.findMany({
@@ -21,10 +21,18 @@ exports.getNotifications = async (req, res) => {
     });
 
     // Convert BigInt to Number for JSON serialization
+    // Map database field names to match frontend expectations
     const formattedNotifications = notifications.map(n => ({
-      ...n,
-      id: Number(n.id),
-      user_id: Number(n.user_id)
+      notification_id: Number(n.id), // Primary field for backend compatibility
+      id: Number(n.id), // Also include 'id' for frontend compatibility
+      user_id: Number(n.user_id),
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      link: n.link,
+      metadata: n.metadata,
+      is_read: n.is_read,
+      created_at: n.created_at
     }));
 
     res.json({
@@ -40,7 +48,7 @@ exports.getNotifications = async (req, res) => {
 // Get unread count
 exports.getUnreadCount = async (req, res) => {
   try {
-    const userId = req.user.userId; // CHANGED from req.user.id
+    const userId = req.user.userId;
 
     const count = await prisma.notifications.count({
       where: { 
@@ -60,7 +68,7 @@ exports.getUnreadCount = async (req, res) => {
 exports.markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.userId; // CHANGED from req.user.id
+    const userId = req.user.userId;
 
     const notification = await prisma.notifications.findFirst({
       where: { 
@@ -88,7 +96,7 @@ exports.markAsRead = async (req, res) => {
 // Mark all notifications as read
 exports.markAllAsRead = async (req, res) => {
   try {
-    const userId = req.user.userId; // CHANGED from req.user.id
+    const userId = req.user.userId;
 
     await prisma.notifications.updateMany({
       where: { 
@@ -109,7 +117,7 @@ exports.markAllAsRead = async (req, res) => {
 exports.deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.userId; // CHANGED from req.user.id
+    const userId = req.user.userId;
 
     const notification = await prisma.notifications.findFirst({
       where: { 
@@ -133,7 +141,7 @@ exports.deleteNotification = async (req, res) => {
   }
 };
 
-// Helper function stays the same
+// Helper function to create notifications
 exports.createNotification = async ({ userId, type, title, message, link, metadata }) => {
   try {
     await prisma.notifications.create({

@@ -17,6 +17,7 @@ const instructorStudentProgress = require('./routes/instructorStudentProgress');
 const notificationRoutes = require('./routes/notificationRoutes');
 const { stripeWebhook } = require('./controllers/orderController');
 const aiAgentRoutes = require("./routes/aiAgent");
+const reviewRoutes = require('./routes/reviewRoutes');
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use('/api', instructorStudentProgress);
 app.use('/api/notifications', notificationRoutes);
 
 app.use("/api/ai", aiAgentRoutes);
+app.use('/api', reviewRoutes);
 
 
 module.exports = app;
