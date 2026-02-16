@@ -28,14 +28,8 @@ exports.generateInvoice = async (req, res) => {
     doc.pipe(res);
 
 
-    // doc.fontSize(20).text('INVOICE', { align: 'right' });
-    // doc.fontSize(10).text('LearnLab Inc.', { align: 'left' });
-    // doc.text('Montreal, QC, Canada');
-    // doc.moveDown();
-
     // === HEADER: LOGO + COMPANY INFO ===
     // Logo (top-left)
-    // const logoPath = path.join(__dirname, "..", "public", "logo.png"); 
     const logoPath = path.join(__dirname, "../../public/logo.png");
     try {
       doc.image(logoPath, 50, 45, { width: 80 });
