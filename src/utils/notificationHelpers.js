@@ -8,7 +8,7 @@ exports.notifyCoursePurchase = async (userId, courseTitle, courseId) => {
     type: 'purchase',
     title: 'Course Purchased Successfully!',
     message: `You've successfully enrolled in "${courseTitle}". Start learning now!`,
-    link: `/student/learning?tab=courses`,
+    link: `/course/${courseId}/learn`,
     metadata: { courseId }
   });
 };
@@ -24,14 +24,14 @@ exports.notifyWishlistAdd = async (userId, courseTitle, courseId) => {
   });
 };
 
-exports.notifyNewMessage = async (userId, senderName, messageId = null) => {
+exports.notifyNewMessage = async (userId, senderName, conversationId = null, messageId = null) => {
   await createNotification({
     userId,
     type: 'new_message',
     title: 'New Message',
     message: `You have a new message from ${senderName}`,
-    link: `/student/messages`,
-    metadata: { messageId, senderName }
+    link: conversationId ? `/student/messages?conversation=${conversationId}` : `/student/messages`,
+    metadata: { messageId, senderName, conversationId }
   });
 };
 
@@ -57,36 +57,36 @@ exports.notifyCourseUpdate = async (userId, courseTitle, courseId, updateDetails
   });
 };
 
-exports.notifyNewReview = async (userId, reviewerName, courseTitle, courseId) => {
+exports.notifyNewReview = async (userId, reviewerName, courseTitle, courseId, rating) => {
   await createNotification({
     userId,
     type: 'new_review',
     title: 'New Review on Your Course',
-    message: `${reviewerName} left a review on "${courseTitle}"`,
-    link: `/courses/${courseId}`,
-    metadata: { courseId, reviewerName }
+    message: `${reviewerName} left a ${rating}-star review on "${courseTitle}"`,
+    link: `/instructor/courses/${courseId}?tab=reviews`,
+    metadata: { courseId, reviewerName, rating }
   });
 };
 
-exports.notifyCertificateIssued = async (userId, courseTitle, courseId, certificateUrl) => {
+exports.notifyCertificateIssued = async (userId, courseTitle, courseId) => {
   await createNotification({
     userId,
     type: 'certificate_issued',
     title: 'Certificate Earned! 🎉',
     message: `Congratulations! You've earned a certificate for completing "${courseTitle}"`,
-    link: `/student/certificates`,
-    metadata: { courseId, certificateUrl }
+    link: `/student/certificates/${courseId}`,
+    metadata: { courseId }
   });
 };
 
-exports.notifyQuizGraded = async (userId, quizTitle, courseId, score) => {
+exports.notifyQuizGraded = async (userId, quizTitle, courseId, lessonId, score) => {
   await createNotification({
     userId,
     type: 'quiz_graded',
     title: 'Quiz Graded',
     message: `Your quiz "${quizTitle}" has been graded. Score: ${score}%`,
-    link: `/course/${courseId}/learn`,
-    metadata: { courseId, quizTitle, score }
+    link: `/course/${courseId}/learn?lesson=${lessonId}`,
+    metadata: { courseId, lessonId, quizTitle, score }
   });
 };
 
@@ -107,7 +107,42 @@ exports.notifyAnnouncement = async (userId, announcementTitle, announcementMessa
     type: 'announcement',
     title: announcementTitle,
     message: announcementMessage,
-    link: link,
+    link: link || `/student/dashboard`,
     metadata: {}
+  });
+};
+
+// Instructor-specific notifications
+
+exports.notifyInstructorNewEnrollment = async (instructorId, studentName, courseTitle, courseId) => {
+  await createNotification({
+    userId: instructorId,
+    type: 'new_enrollment',
+    title: 'New Student Enrollment',
+    message: `${studentName} enrolled in your course "${courseTitle}"`,
+    link: `/instructor/courses/${courseId}?tab=students`,
+    metadata: { courseId, studentName }
+  });
+};
+
+exports.notifyInstructorCourseCompletion = async (instructorId, studentName, courseTitle, courseId) => {
+  await createNotification({
+    userId: instructorId,
+    type: 'course_completion',
+    title: 'Student Completed Course',
+    message: `${studentName} completed your course "${courseTitle}"`,
+    link: `/instructor/courses/${courseId}?tab=students`,
+    metadata: { courseId, studentName }
+  });
+};
+
+exports.notifyInstructorNewMessage = async (instructorId, senderName, conversationId = null) => {
+  await createNotification({
+    userId: instructorId,
+    type: 'new_message',
+    title: 'New Message',
+    message: `You have a new message from ${senderName}`,
+    link: conversationId ? `/instructor/messages?conversation=${conversationId}` : `/instructor/messages`,
+    metadata: { senderName, conversationId }
   });
 };
