@@ -88,7 +88,8 @@ exports.createReview = async (req, res) => {
       Number(course.instructor_id), 
       reviewerName, 
       course.title, 
-      courseId
+      courseId,
+      rating
     );
 
     res.status(201).json({
@@ -100,8 +101,14 @@ exports.createReview = async (req, res) => {
         course_id: Number(review.course_id),
         rating: review.rating,
         review_text: review.review_text,
+        comment: review.review_text, // Add alias for frontend
         created_at: review.created_at,
-        user: review.Users_Reviews_user_idToUsers
+        student: {
+          first_name: review.Users_Reviews_user_idToUsers.first_name,
+          last_name: review.Users_Reviews_user_idToUsers.last_name,
+          photo: review.Users_Reviews_user_idToUsers.photo_url,
+          name: `${review.Users_Reviews_user_idToUsers.first_name} ${review.Users_Reviews_user_idToUsers.last_name}`
+        }
       }
     });
 
@@ -164,8 +171,14 @@ exports.updateReview = async (req, res) => {
         course_id: Number(updatedReview.course_id),
         rating: updatedReview.rating,
         review_text: updatedReview.review_text,
+        comment: updatedReview.review_text, // Add alias for frontend
         created_at: updatedReview.created_at,
-        user: updatedReview.Users_Reviews_user_idToUsers
+        student: {
+          first_name: updatedReview.Users_Reviews_user_idToUsers.first_name,
+          last_name: updatedReview.Users_Reviews_user_idToUsers.last_name,
+          photo: updatedReview.Users_Reviews_user_idToUsers.photo_url,
+          name: `${updatedReview.Users_Reviews_user_idToUsers.first_name} ${updatedReview.Users_Reviews_user_idToUsers.last_name}`
+        }
       }
     });
 
@@ -211,10 +224,11 @@ exports.deleteReview = async (req, res) => {
   }
 };
 
-// Get all reviews for a course
+// Get all reviews for a course (split user's review from others)
 exports.getCourseReviews = async (req, res) => {
   try {
     const { courseId } = req.params;
+    const userId = req.user?.userId; // Get logged-in user ID
     const { page = 1, limit = 10, sort = 'recent' } = req.query;
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -233,9 +247,51 @@ exports.getCourseReviews = async (req, res) => {
         orderBy = { created_at: 'desc' };
     }
 
-    // Get reviews with user info
+    // Get user's own review separately
+    let userReview = null;
+    if (userId) {
+      const userReviewData = await prisma.reviews.findFirst({
+        where: {
+          course_id: Number(courseId),
+          user_id: Number(userId)
+        },
+        include: {
+          Users_Reviews_user_idToUsers: {
+            select: {
+              first_name: true,
+              last_name: true,
+              photo_url: true
+            }
+          }
+        }
+      });
+
+      if (userReviewData) {
+        userReview = {
+          id: Number(userReviewData.id),
+          user_id: Number(userReviewData.user_id),
+          rating: userReviewData.rating,
+          review_text: userReviewData.review_text,
+          comment: userReviewData.review_text, // Alias for frontend
+          created_at: userReviewData.created_at,
+          student: {
+            first_name: userReviewData.Users_Reviews_user_idToUsers.first_name,
+            last_name: userReviewData.Users_Reviews_user_idToUsers.last_name,
+            photo: userReviewData.Users_Reviews_user_idToUsers.photo_url,
+            name: `${userReviewData.Users_Reviews_user_idToUsers.first_name} ${userReviewData.Users_Reviews_user_idToUsers.last_name}`
+          }
+        };
+      }
+    }
+
+    // Get all OTHER reviews (excluding user's own)
+    const whereClause = {
+      course_id: Number(courseId),
+      ...(userId && { user_id: { not: Number(userId) } })
+    };
+
     const reviews = await prisma.reviews.findMany({
-      where: { course_id: Number(courseId) },
+      where: whereClause,
       include: {
         Users_Reviews_user_idToUsers: {
           select: {
@@ -250,12 +306,12 @@ exports.getCourseReviews = async (req, res) => {
       take: Number(limit)
     });
 
-    // Get total count
+    // Get total count (excluding user's own)
     const totalReviews = await prisma.reviews.count({
-      where: { course_id: Number(courseId) }
+      where: whereClause
     });
 
-    // Calculate average rating and rating distribution
+    // Calculate average rating and rating distribution (ALL reviews including user's)
     const allReviews = await prisma.reviews.findMany({
       where: { course_id: Number(courseId) },
       select: { rating: true }
@@ -280,13 +336,16 @@ exports.getCourseReviews = async (req, res) => {
         user_id: Number(r.user_id),
         rating: r.rating,
         review_text: r.review_text,
+        comment: r.review_text, // Alias for frontend
         created_at: r.created_at,
-        user: {
+        student: {
           first_name: r.Users_Reviews_user_idToUsers.first_name,
           last_name: r.Users_Reviews_user_idToUsers.last_name,
-          photo_url: r.Users_Reviews_user_idToUsers.photo_url
+          photo: r.Users_Reviews_user_idToUsers.photo_url,
+          name: `${r.Users_Reviews_user_idToUsers.first_name} ${r.Users_Reviews_user_idToUsers.last_name}`
         }
       })),
+      userReview: userReview, // User's own review
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -295,7 +354,7 @@ exports.getCourseReviews = async (req, res) => {
       },
       stats: {
         averageRating: Number(averageRating.toFixed(1)),
-        totalReviews,
+        totalReviews: allReviews.length, // Total including user's review
         ratingDistribution
       }
     });
@@ -343,8 +402,14 @@ exports.getUserCourseReview = async (req, res) => {
         course_id: Number(review.course_id),
         rating: review.rating,
         review_text: review.review_text,
+        comment: review.review_text, // Alias for frontend
         created_at: review.created_at,
-        user: review.Users_Reviews_user_idToUsers
+        student: {
+          first_name: review.Users_Reviews_user_idToUsers.first_name,
+          last_name: review.Users_Reviews_user_idToUsers.last_name,
+          photo: review.Users_Reviews_user_idToUsers.photo_url,
+          name: `${review.Users_Reviews_user_idToUsers.first_name} ${review.Users_Reviews_user_idToUsers.last_name}`
+        }
       }
     });
 
