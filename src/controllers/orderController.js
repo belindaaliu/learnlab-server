@@ -12,19 +12,18 @@ exports.createPaymentIntent = async (req, res) => {
     const { cartItems, planId, checkoutType } = req.body;
 
     const userId = req.user?.userId || req.user?.id;
-
     if (!userId) {
       return res.status(401).json({ message: "User not authenticated" });
     }
 
     let amount = 0;
+    let originalAmount = 0;
     let metadata = {
       userId: userId.toString(),
       type: checkoutType,
     };
 
-    // look up active subscription for extra % off additional content
-
+    // --- Look up active subscription for extra % off additional content ---
     let extraDiscountPercent = 0;
     let includedCourseIds = new Set();
 
@@ -50,8 +49,9 @@ exports.createPaymentIntent = async (req, res) => {
         }
       }
 
-      // e.g. 10 means 10% off additional content
-      extraDiscountPercent = Number(features?.discountpercent || 0);
+      extraDiscountPercent = Number(
+        features?.discount_percent ?? features?.discountpercent ?? 0,
+      );
 
       const planCourses = await prisma.courses.findMany({
         where: { plan_id: activeSub.SubscriptionPlans.id },
@@ -61,6 +61,7 @@ exports.createPaymentIntent = async (req, res) => {
       includedCourseIds = new Set(planCourses.map((c) => c.id.toString()));
     }
 
+    // --- CART CHECKOUT ---
     if (checkoutType === "cart") {
       if (!cartItems || cartItems.length === 0) {
         return res.status(400).json({ message: "Cart is empty" });
@@ -74,33 +75,46 @@ exports.createPaymentIntent = async (req, res) => {
       originalAmount = 0;
       amount = 0;
 
-      // for (const course of courses) {
-      //   const pricing = getCoursePricing(course);
-      //   originalAmount += pricing.originalPrice;
-      //   amount += pricing.finalPrice;
-      // }
+      let totalCourseDiscount = 0;
+      let totalSubscriptionDiscount = 0;
 
       for (const course of courses) {
         const pricing = getCoursePricing(course);
-        let courseOriginal = pricing.originalPrice;
-        let courseFinal = pricing.finalPrice;
+
+        const courseOriginal = pricing.originalPrice;
+        const courseFinalBase = pricing.finalPrice;
+        let courseFinal = courseFinalBase;
 
         const isIncludedInPlan = includedCourseIds.has(course.id.toString());
 
-        // Apply subscription extra % discount only to non-included courses
+        // subscription extra discount only on non-included courses
+        let subscriptionDiscountForCourse = 0;
         if (extraDiscountPercent > 0 && !isIncludedInPlan) {
-          const extraDiscount = courseFinal * (extraDiscountPercent / 100);
-          courseFinal = Number((courseFinal - extraDiscount).toFixed(2));
+          subscriptionDiscountForCourse =
+            courseFinalBase * (extraDiscountPercent / 100);
+          subscriptionDiscountForCourse = Number(
+            subscriptionDiscountForCourse.toFixed(2),
+          );
+          courseFinal = Number(
+            (courseFinalBase - subscriptionDiscountForCourse).toFixed(2),
+          );
         }
+
+        const courseDiscount = courseOriginal - courseFinalBase;
 
         originalAmount += courseOriginal;
         amount += courseFinal;
+        totalCourseDiscount += courseDiscount;
+        totalSubscriptionDiscount += subscriptionDiscountForCourse;
       }
 
       metadata.courseIds = courseIds.join(",");
       metadata.originalAmount = originalAmount.toString();
-    } else if (checkoutType === "subscription") {
-      // Check for an existing active subscription
+      metadata.courseDiscount = totalCourseDiscount.toString();
+      metadata.subscriptionDiscount = totalSubscriptionDiscount.toString();
+    }
+    // --- SUBSCRIPTION CHECKOUT ---
+    else if (checkoutType === "subscription") {
       const existingSub = await prisma.subscriptions.findFirst({
         where: {
           user_id: BigInt(userId),
@@ -125,13 +139,14 @@ exports.createPaymentIntent = async (req, res) => {
       originalAmount = Number(plan.price);
       amount = originalAmount;
 
+      const planDiscount = 0;
+
       metadata.planId = planId.toString();
       metadata.originalAmount = originalAmount.toString();
+      metadata.subscriptionDiscount = planDiscount.toString();
     } else {
       return res.status(400).json({ message: "Invalid checkout type" });
     }
-
-    const subscriptionDiscount = Math.max(0, originalAmount - amount);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100),
@@ -139,6 +154,8 @@ exports.createPaymentIntent = async (req, res) => {
       metadata,
       automatic_payment_methods: { enabled: true },
     });
+
+    const subscriptionDiscount = Math.max(0, originalAmount - amount);
 
     res.json({
       clientSecret: paymentIntent.client_secret,
@@ -154,7 +171,7 @@ exports.createPaymentIntent = async (req, res) => {
 
 exports.stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
-  console.log("Stripe webhook hit, signature:", sig);
+
   let event;
 
   try {
@@ -163,28 +180,39 @@ exports.stripeWebhook = async (req, res) => {
       sig,
       process.env.STRIPE_WEBHOOK_SECRET,
     );
-    console.log("Stripe event type:", event.type);
   } catch (err) {
-    console.error(`Webhook Error: ${err.message}`);
+    console.error("Webhook constructEvent Error:", err);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === "payment_intent.succeeded") {
-    const intent = event.data.object;
-    console.log("payment_intent.succeeded metadata:", intent.metadata);
-    const { type, userId, courseIds, planId, originalAmount } = intent.metadata;
+  try {
+    if (event.type === "payment_intent.succeeded") {
+      const intent = event.data.object;
 
-    const finalAmount = intent.amount / 100;
-    const origAmount = originalAmount ? Number(originalAmount) : finalAmount;
+      const {
+        type,
+        userId,
+        courseIds,
+        planId,
+        originalAmount,
+        courseDiscount,
+        subscriptionDiscount,
+      } = intent.metadata;
 
-    try {
+      const finalAmount = intent.amount / 100;
+      const origAmount = originalAmount ? Number(originalAmount) : finalAmount;
+      const courseDisc = courseDiscount ? Number(courseDiscount) : 0;
+      const subDisc = subscriptionDiscount ? Number(subscriptionDiscount) : 0;
+
       if (type === "cart") {
         await exports.fulfillOrder(
           userId,
           courseIds.split(","),
-          intent.id, // transactionId
+          intent.id,
           finalAmount,
           origAmount,
+          courseDisc,
+          subDisc,
         );
       } else if (type === "subscription") {
         await exports.fulfillSubscription(
@@ -193,14 +221,15 @@ exports.stripeWebhook = async (req, res) => {
           intent.id,
           finalAmount,
           origAmount,
+          subDisc,
         );
-      }
-    } catch (fulfillmentError) {
-      console.error("Fulfillment Error:", fulfillmentError);
-      return res.status(500).json({ error: "Fulfillment failed" });
+      } 
     }
+    return res.status(200).send({ received: true });
+  } catch (err) {
+    console.error("Webhook handler Error:", err);
+    return res.status(500).send("Webhook handler error");
   }
-  res.status(200).send({ received: true });
 };
 
 // Course Fulfillment
@@ -210,18 +239,22 @@ exports.fulfillOrder = async (
   transactionId,
   finalAmount,
   originalAmount,
+  totalCourseDiscount,
+  totalSubscriptionDiscount,
 ) => {
   const uId = BigInt(userId);
 
   return await prisma.$transaction(async (tx) => {
-    const perCourseFinal = finalAmount / courseIds.length;
-    const perCourseOriginal = originalAmount / courseIds.length;
-    const perCourseDiscount = perCourseOriginal - perCourseFinal;
+    const count = courseIds.length;
+
+    const perCourseFinal = finalAmount / count;
+    const perCourseOriginal = originalAmount / count;
+    const perCourseCourseDiscount = totalCourseDiscount / count;
+    const perCourseSubDiscount = totalSubscriptionDiscount / count;
 
     for (const cId of courseIds) {
       const courseId = BigInt(cId);
 
-      // Get course details for notification
       const course = await tx.courses.findUnique({
         where: { id: courseId },
         select: { title: true },
@@ -233,7 +266,14 @@ exports.fulfillOrder = async (
           course_id: courseId,
           amount: perCourseFinal,
           original_amount: perCourseOriginal,
-          discount_amount: perCourseDiscount > 0 ? perCourseDiscount : 0,
+          discount_amount:
+            perCourseCourseDiscount + perCourseSubDiscount > 0
+              ? perCourseCourseDiscount + perCourseSubDiscount
+              : 0,
+          course_discount_amount:
+            perCourseCourseDiscount > 0 ? perCourseCourseDiscount : 0,
+          subscription_discount_amount:
+            perCourseSubDiscount > 0 ? perCourseSubDiscount : 0,
           currency: "CAD",
           method: "stripe",
           status: "paid",
@@ -248,7 +288,6 @@ exports.fulfillOrder = async (
         },
       });
 
-      // Send notification for each course purchased
       await notifyCoursePurchase(userId, course.title, cId);
     }
 
@@ -265,6 +304,7 @@ exports.fulfillSubscription = async (
   transactionId,
   finalAmount,
   originalAmount,
+  subscriptionDiscount,
 ) => {
   const uId = BigInt(userId);
   const pId = BigInt(planId);
@@ -291,7 +331,11 @@ exports.fulfillSubscription = async (
     });
 
     const orig = originalAmount ?? finalAmount;
-    const discount = orig - finalAmount;
+    const totalDiscount = orig - finalAmount;
+    const subDisc =
+      typeof subscriptionDiscount === "number"
+        ? subscriptionDiscount
+        : totalDiscount;
 
     await tx.payments.create({
       data: {
@@ -299,7 +343,9 @@ exports.fulfillSubscription = async (
         subscription_plan_id: pId,
         amount: finalAmount,
         original_amount: orig,
-        discount_amount: discount > 0 ? discount : 0,
+        discount_amount: totalDiscount > 0 ? totalDiscount : 0,
+        course_discount_amount: 0,
+        subscription_discount_amount: subDisc > 0 ? subDisc : 0,
         currency: "CAD",
         method: "stripe",
         status: "paid",

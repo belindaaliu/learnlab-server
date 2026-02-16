@@ -23,6 +23,12 @@ const app = express();
 
 // --- Middlewares ---
 const seoMiddleware = require("./middleware/seoMiddleware");
+
+app.post(
+  "/api/webhooks/stripe",
+  express.raw({ type: "application/json" }),
+  stripeWebhook,
+);
 // app.use(cors());
 
 // Define allowed origins
@@ -48,12 +54,6 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
-);
-
-app.post(
-  "/api/webhooks/stripe",
-  express.raw({ type: "application/json" }),
-  stripeWebhook,
 );
 
 app.use(seoMiddleware);
