@@ -42,6 +42,7 @@ function getCoursePricing(course) {
 
 async function getCart(userId) {
   try {
+    // Load cart items
     const items = await prisma.ShoppingCart.findMany({
       where: { user_id: BigInt(userId) },
       include: {
@@ -51,8 +52,48 @@ async function getCart(userId) {
       },
     });
 
+    // Check active subscription and plan features.discountpercent
+    const activeSub = await prisma.subscriptions.findFirst({
+      where: {
+        user_id: BigInt(userId),
+        status: "active",
+        end_date: { gte: new Date() },
+      },
+      include: {
+        SubscriptionPlans: true,
+      },
+    });
+
+    let extraDiscountPercent = 0;
+    let includedCourseIds = new Set();
+
+    if (activeSub && activeSub.SubscriptionPlans) {
+      let features = activeSub.SubscriptionPlans.features;
+
+      if (typeof features === "string") {
+        try {
+          features = JSON.parse(features);
+        } catch {
+          features = {};
+        }
+      }
+
+      extraDiscountPercent = Number(
+        features?.discount_percent ?? features?.discountpercent ?? 0,
+      );
+
+      // courses linked to this plan are considered "included", so no extra discount
+      const planCourses = await prisma.courses.findMany({
+        where: { plan_id: activeSub.SubscriptionPlans.id },
+        select: { id: true },
+      });
+      includedCourseIds = new Set(planCourses.map((c) => c.id.toString()));
+    }
+
+    // Aggregate totals
     let subtotal = 0;
     let discount_total = 0;
+    let subscription_discount_total = 0;
     const cartItems = [];
 
     for (const item of items) {
@@ -61,8 +102,28 @@ async function getCart(userId) {
       const course = item.Courses;
       const pricing = getCoursePricing(course);
 
+
       subtotal += pricing.originalPrice;
       discount_total += pricing.discountAmount;
+
+      // base final price after course sales
+      let finalPrice = pricing.finalPrice;
+
+      // extra subscription discount (only for non-included courses)
+      let subscriptionDiscountForCourse = 0;
+      const isIncludedInPlan = includedCourseIds.has(course.id.toString());
+
+      if (extraDiscountPercent > 0 && !isIncludedInPlan) {
+        subscriptionDiscountForCourse =
+          finalPrice * (extraDiscountPercent / 100);
+        subscriptionDiscountForCourse = Number(
+          subscriptionDiscountForCourse.toFixed(2),
+        );
+        finalPrice = Number(
+          (finalPrice - subscriptionDiscountForCourse).toFixed(2),
+        );
+        subscription_discount_total += subscriptionDiscountForCourse;
+      }
 
       const instructorUser = course.Users || null;
 
@@ -73,11 +134,11 @@ async function getCart(userId) {
         added_at: item.added_at,
         original_price: pricing.originalPrice,
         discount_amount: pricing.discountAmount,
-        final_price: pricing.finalPrice,
+        final_price: finalPrice,
         course: {
           id: course.id.toString(),
           title: course.title,
-          price: pricing.finalPrice,
+          price: finalPrice,
           original_price: pricing.originalPrice,
           discount_amount: pricing.discountAmount,
           thumbnail_url: course.thumbnail_url,
@@ -94,12 +155,15 @@ async function getCart(userId) {
       });
     }
 
-    const total = subtotal - discount_total;
+    const total = subtotal - discount_total - subscription_discount_total;
 
     return {
       items: cartItems,
       subtotal: Number(subtotal.toFixed(2)),
       discount_total: Number(discount_total.toFixed(2)),
+      subscription_discount_total: Number(
+        subscription_discount_total.toFixed(2),
+      ),
       total: Number(total.toFixed(2)),
       itemCount: cartItems.length,
     };

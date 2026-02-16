@@ -1,6 +1,9 @@
 const prisma = require("../lib/prisma");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const { notifyCoursePurchase, notifyCourseEnrollment } = require("../utils/notificationHelpers");
+const {
+  notifyCoursePurchase,
+  notifyCourseEnrollment,
+} = require("../utils/notificationHelpers");
 const { getCoursePricing } = require("../utils/discount");
 const { Prisma } = require("@prisma/client");
 
@@ -20,6 +23,44 @@ exports.createPaymentIntent = async (req, res) => {
       type: checkoutType,
     };
 
+    // look up active subscription for extra % off additional content
+
+    let extraDiscountPercent = 0;
+    let includedCourseIds = new Set();
+
+    const activeSub = await prisma.subscriptions.findFirst({
+      where: {
+        user_id: BigInt(userId),
+        status: "active",
+        end_date: { gte: new Date() },
+      },
+      include: {
+        SubscriptionPlans: true,
+      },
+    });
+
+    if (activeSub && activeSub.SubscriptionPlans) {
+      let features = activeSub.SubscriptionPlans.features;
+
+      if (typeof features === "string") {
+        try {
+          features = JSON.parse(features);
+        } catch {
+          features = {};
+        }
+      }
+
+      // e.g. 10 means 10% off additional content
+      extraDiscountPercent = Number(features?.discountpercent || 0);
+
+      const planCourses = await prisma.courses.findMany({
+        where: { plan_id: activeSub.SubscriptionPlans.id },
+        select: { id: true },
+      });
+
+      includedCourseIds = new Set(planCourses.map((c) => c.id.toString()));
+    }
+
     if (checkoutType === "cart") {
       if (!cartItems || cartItems.length === 0) {
         return res.status(400).json({ message: "Cart is empty" });
@@ -33,10 +74,27 @@ exports.createPaymentIntent = async (req, res) => {
       originalAmount = 0;
       amount = 0;
 
+      // for (const course of courses) {
+      //   const pricing = getCoursePricing(course);
+      //   originalAmount += pricing.originalPrice;
+      //   amount += pricing.finalPrice;
+      // }
+
       for (const course of courses) {
-        const pricing = getCoursePricing(course); 
-        originalAmount += pricing.originalPrice;
-        amount += pricing.finalPrice;
+        const pricing = getCoursePricing(course);
+        let courseOriginal = pricing.originalPrice;
+        let courseFinal = pricing.finalPrice;
+
+        const isIncludedInPlan = includedCourseIds.has(course.id.toString());
+
+        // Apply subscription extra % discount only to non-included courses
+        if (extraDiscountPercent > 0 && !isIncludedInPlan) {
+          const extraDiscount = courseFinal * (extraDiscountPercent / 100);
+          courseFinal = Number((courseFinal - extraDiscount).toFixed(2));
+        }
+
+        originalAmount += courseOriginal;
+        amount += courseFinal;
       }
 
       metadata.courseIds = courseIds.join(",");
@@ -65,13 +123,15 @@ exports.createPaymentIntent = async (req, res) => {
       if (!plan) return res.status(404).json({ message: "Plan not found" });
 
       originalAmount = Number(plan.price);
-      amount = originalAmount; 
+      amount = originalAmount;
 
       metadata.planId = planId.toString();
       metadata.originalAmount = originalAmount.toString();
     } else {
       return res.status(400).json({ message: "Invalid checkout type" });
     }
+
+    const subscriptionDiscount = Math.max(0, originalAmount - amount);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100),
@@ -83,6 +143,8 @@ exports.createPaymentIntent = async (req, res) => {
     res.json({
       clientSecret: paymentIntent.client_secret,
       totalAmount: Number(amount),
+      originalAmount: Number(originalAmount),
+      subscriptionDiscount: Number(subscriptionDiscount),
     });
   } catch (error) {
     console.error("Stripe Intent Error:", error);
@@ -92,7 +154,7 @@ exports.createPaymentIntent = async (req, res) => {
 
 exports.stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
-  console.log("Stripe webhook hit, signature:", sig); 
+  console.log("Stripe webhook hit, signature:", sig);
   let event;
 
   try {
@@ -162,7 +224,7 @@ exports.fulfillOrder = async (
       // Get course details for notification
       const course = await tx.courses.findUnique({
         where: { id: courseId },
-        select: { title: true }
+        select: { title: true },
       });
 
       await tx.payments.create({
