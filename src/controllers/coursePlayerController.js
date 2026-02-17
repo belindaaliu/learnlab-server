@@ -1058,6 +1058,40 @@ const getQuizInfo = async (req, res) => {
   }
 };
 
+// Get course progress for a user
+const getCourseProgress = async (req, res) => {
+  try {
+    const userId = Number(req.user.userId);
+    const courseId = Number(req.params.courseId);
+
+    const completedLessons = await prisma.lessonProgress.count({
+      where: {
+        user_id: BigInt(userId),
+        is_completed: true,
+        CourseContent: {
+          course_id: BigInt(courseId),
+          type: { not: "section" },
+        },
+      },
+    });
+
+    const totalLessons = await prisma.courseContent.count({
+      where: {
+        course_id: BigInt(courseId),
+        type: { not: "section" },
+      },
+    });
+
+    res.json({
+      completed_lessons: completedLessons,
+      total_lessons: totalLessons,
+    });
+  } catch (error) {
+    console.error("Error fetching course progress:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 module.exports = {
   getCoursePlayerData,
   getCourseLessons,
@@ -1073,4 +1107,5 @@ module.exports = {
   submitQuizAttempt,
   getQuizResults,
   getQuizInfo,
+  getCourseProgress
 };

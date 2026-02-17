@@ -629,5 +629,5 @@ module.exports = {
   addCourseToWishlist,
   removeFromWishlist,
   enrollCourse,
-  getEnrolledCoursesWithNextContent
+  getEnrolledCoursesWithNextContent,
 };

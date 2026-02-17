@@ -14,7 +14,8 @@ const {
   getAssessmentData,
   submitQuizAttempt,
   getQuizResults,
-  getQuizInfo
+  getQuizInfo,
+  getCourseProgress
 } = require("../controllers/coursePlayerController");
 
 const { authMiddleware } = require("../middleware/authMiddleware");
@@ -63,5 +64,7 @@ router.get("/quiz-results/:attemptId", authMiddleware, getQuizResults);
 
 // Get quiz info
 router.get("/quiz-info/:attemptId", authMiddleware, getQuizInfo);
+
+router.get('/:courseId/progress', authMiddleware, getCourseProgress);
 
 module.exports = router;
