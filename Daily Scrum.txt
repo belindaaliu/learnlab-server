@@ -850,10 +850,10 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Completed Admin analytics
 
 2. To do until next Scrum:
-
+- AI Integration into subscription plans and admin analytics.
 
 3. Need assistance / figure things out
 
@@ -901,10 +901,12 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+-Completed AI Integration in admin analytics and subscription plans.
+-Added Logo and payment type to invoice.
+-Implemented discounts on invoice.
 
 2. To do until next Scrum:
-
+-Frontend testing.
 
 3. Need assistance / figure things out
 
@@ -952,10 +954,11 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+-Implemented frontend testing on selected files.
+-Fixed payment bugs.
 
 2. To do until next Scrum:
-
+-Debugging
 
 3. Need assistance / figure things out
 
