@@ -491,9 +491,7 @@ exports.getAnalytics = async (req, res) => {
     const totalSubscriptionRevenue = Number(
       subscriptionRevenueAgg._sum.amount || 0,
     ); // subs only
-    const collectedCourseRevenue = Number(
-      courseRevenueAgg._sum.amount || 0,
-    ); // courses only
+    const collectedCourseRevenue = Number(courseRevenueAgg._sum.amount || 0); // courses only
     const otherRevenue = Number(otherRevenueAgg._sum.amount || 0); // neither
 
     // Course revenue ceiling = price × enrollments (list‑price)
@@ -545,7 +543,7 @@ exports.getAnalytics = async (req, res) => {
 
         totalCourseRevenueCeiling,
 
-        instructorShare, 
+        instructorShare,
         platformShare,
         subscriptionRevenueByMonth,
         subscriptionPopularity,
@@ -697,6 +695,103 @@ exports.updateCoursePricing = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Failed to update course" });
+  }
+};
+
+exports.getInstructorCoursesWithRevenue = async (req, res) => {
+  try {
+    const { instructorId } = req.params;
+    const id = Number(instructorId);
+
+    // Ensure instructor exists
+    const instructor = await prisma.users.findUnique({
+      where: { id },
+      select: { id: true, first_name: true, last_name: true },
+    });
+    if (!instructor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Instructor not found" });
+    }
+
+    // Base courses with counts
+    const courses = await prisma.courses.findMany({
+      where: { instructor_id: id, is_deleted: false },
+      select: {
+        id: true,
+        title: true,
+        subtitle: true,
+        description: true,
+        thumbnail_url: true,
+        price: true,
+        level: true,
+        language: true,
+        views: true,
+        created_at: true,
+        Categories: { select: { name: true } },
+        Users: { select: { first_name: true, last_name: true } },
+        _count: {
+          select: {
+            CourseContent: true,
+            Enrollments: true,
+            Reviews: true,
+          },
+        },
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    const courseIds = courses.map((c) => c.id);
+    if (courseIds.length === 0) {
+      return res.json(JSON.parse(JSON.stringify({ success: true, data: [] })));
+    }
+
+    // Revenue per course (paid payments)
+    const payments = await prisma.payments.groupBy({
+      by: ["course_id"],
+      where: {
+        status: "paid",
+        course_id: { in: courseIds },
+      },
+      _sum: { amount: true },
+    });
+
+    const revenueMap = payments.reduce((acc, row) => {
+      acc[row.course_id.toString()] = Number(row._sum.amount || 0);
+      return acc;
+    }, {});
+
+    //  students_enrolled and totalRevenue
+    const result = courses.map((course) => ({
+      id: course.id,
+      title: course.title,
+      subtitle: course.subtitle,
+      description: course.description,
+      thumbnail_url: course.thumbnail_url,
+      price: Number(course.price || 0),
+      level: course.level,
+      language: course.language,
+      category: course.Categories?.name || "Uncategorized",
+      instructor_name: course.Users
+        ? `${course.Users.first_name} ${course.Users.last_name}`
+        : `${instructor.first_name} ${instructor.last_name}`,
+      students_enrolled: course._count?.Enrollments || 0,
+      reviews_count: course._count?.Reviews || 0,
+      lectures: course._count?.CourseContent || 0,
+      views: course.views || 0,
+      totalRevenue: revenueMap[course.id.toString()] || 0,
+    }));
+
+    res.json(
+      JSON.parse(
+        JSON.stringify({ success: true, data: result }, (k, v) =>
+          typeof v === "bigint" ? v.toString() : v,
+        ),
+      ),
+    );
+  } catch (err) {
+    console.error("getInstructorCoursesWithRevenue error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 

@@ -15,8 +15,6 @@ router.use(roleMiddleware("admin"));
 router.get("/dashboard-stats", adminController.getDashboardStats);
 router.get("/analytics", adminController.getAnalytics);
 router.get("/analytics/advanced", adminController.getAnalytics);
-// router.get('/analytics/enrollments', adminController.getEnrollmentAnalytics);
-// router.get('/analytics/advanced', adminController.getPureInsights);
 
 // --- SUBSCRIPTION PLAN MANAGEMENT (ADMIN ONLY) ---
 router.get("/subscriptions/plans", subscriptionController.getPlans);
@@ -33,6 +31,10 @@ router.get(
 router.post(
   "/instructors/:instructorId/review",
   adminController.reviewInstructor,
+);
+router.get(
+  "/instructors/:instructorId/courses",
+  adminController.getInstructorCoursesWithRevenue,
 );
 
 // --- COURSE MANAGEMENT & REVIEW ---
