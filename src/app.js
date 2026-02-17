@@ -18,6 +18,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const { stripeWebhook } = require("./controllers/orderController");
 const aiAgentRoutes = require("./routes/aiAgent");
 const reviewRoutes = require("./routes/reviewRoutes");
+const videoNoteRoutes = require("./routes/videoNoteRoutes");
 
 const app = express();
 
@@ -93,5 +94,7 @@ app.use("/api/notifications", notificationRoutes);
 
 app.use("/api/ai", aiAgentRoutes);
 app.use("/api", reviewRoutes);
+
+app.use("/api/video-notes", videoNoteRoutes);
 
 module.exports = app;

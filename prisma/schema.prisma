@@ -69,6 +69,8 @@ model CourseContent {
   type             CourseContent_type
   video_url        String?            @db.VarChar(500)
   note_content     String?            @db.Text
+  transcript       String?            @db.Text
+  audio_url        String?            @db.VarChar(500)
   duration_seconds Int?
   order_index      Int
   is_preview       Boolean            @default(false)
@@ -101,11 +103,6 @@ model Courses {
   description        String?            @db.Text
   category_id        BigInt
   price              Decimal?           @db.Decimal(10, 2)
-  discount_type      DiscountType?
-  discount_value     Decimal?           @db.Decimal(10, 2)
-  discount_active    Boolean?           @default(false)
-  discount_starts_at DateTime?          @db.Timestamp(0)
-  discount_ends_at   DateTime?          @db.Timestamp(0)
   thumbnail_url      String?            @db.VarChar(500)
   level              Courses_level      @default(beginner)
   views              Int?               @default(0)
@@ -119,6 +116,11 @@ model Courses {
   long_description   String?            @db.Text
   requirements       String?            @db.Text
   target_audience    String?            @db.Text
+  discount_active    Boolean?           @default(false)
+  discount_ends_at   DateTime?          @db.Timestamp(0)
+  discount_starts_at DateTime?          @db.Timestamp(0)
+  discount_type      DiscountType?
+  discount_value     Decimal?           @db.Decimal(10, 2)
   Certificates       Certificates[]
   CourseContent      CourseContent[]
   CourseTags         CourseTags[]
@@ -192,10 +194,10 @@ model Notifications {
   user_id    BigInt
   title      String?             @db.VarChar(255)
   message    String              @db.Text
-  type       Notifications_type?
   link       String?             @db.VarChar(500)
-  is_read    Boolean?            @default(false)
   metadata   Json?
+  type       Notifications_type?
+  is_read    Boolean?            @default(false)
   created_at DateTime?           @default(now()) @db.Timestamp(0)
   updated_at DateTime?           @default(now()) @db.Timestamp(0)
   Users      Users               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_user")
@@ -217,8 +219,8 @@ model Payments {
   transaction_id               String?            @db.VarChar(255)
   created_at                   DateTime?          @default(now()) @db.Timestamp(0)
   updated_at                   DateTime?          @default(now()) @db.Timestamp(0)
-  original_amount              Decimal?           @db.Decimal(10, 2)
   discount_amount              Decimal?           @db.Decimal(10, 2)
+  original_amount              Decimal?           @db.Decimal(10, 2)
   course_discount_amount       Decimal?           @db.Decimal(10, 2)
   subscription_discount_amount Decimal?           @db.Decimal(10, 2)
   Courses                      Courses?           @relation(fields: [course_id], references: [id], onUpdate: NoAction, map: "fk_payment_course")
@@ -284,11 +286,11 @@ model SubscriptionPlans {
   slug               String?                      @unique(map: "slug") @db.VarChar(50)
   features           Json?
   button_text        String?                      @db.VarChar(50)
+  discount_active    Boolean?                     @default(false)
+  discount_ends_at   DateTime?                    @db.Timestamp(0)
+  discount_starts_at DateTime?                    @db.Timestamp(0)
   discount_type      DiscountType?
   discount_value     Decimal?                     @db.Decimal(10, 2)
-  discount_active    Boolean?                     @default(false)
-  discount_starts_at DateTime?                    @db.Timestamp(0)
-  discount_ends_at   DateTime?                    @db.Timestamp(0)
   Courses            Courses[]
   Payments           Payments[]
   Subscriptions      Subscriptions[]
@@ -377,18 +379,17 @@ model Users {
 }
 
 model VideoNotes {
-  id         BigInt   @id @default(autoincrement())
-  user_id    BigInt
-  content_id BigInt
-  notes      String   @db.Text
-  transcript String?  @db.Text
-  key_terms  Json?
-  summary    String?  @db.Text
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  user           Users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id             BigInt        @id @default(autoincrement())
+  user_id        BigInt
+  content_id     BigInt
+  notes          String        @db.Text
+  transcript     String?       @db.Text
+  key_terms      Json?
+  summary        String?       @db.Text
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
   course_content CourseContent @relation(fields: [content_id], references: [id], onDelete: Cascade)
+  user           Users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, content_id])
   @@index([user_id])

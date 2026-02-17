@@ -833,14 +833,9 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
-- adding public profile for instructors
-- course Player page updated.
-- MFA fixed for email
-- progress bar added in my learning drop down in student layout
 
 
 2. To do until next Scrum:
-- implementing AI API 
 
 
 3. Need assistance / figure things out
@@ -939,9 +934,14 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
+- adding public profile for instructors
+- course Player page updated.
+- MFA fixed for email
+- progress bar added in my learning drop down in student layout
 
 
 2. To do until next Scrum:
+- implementing AI API 
 
 
 
@@ -990,7 +990,12 @@ Aleks
 Samira
 
 1. Done / not done since last scrum:
-
+- Add video transcription using Gemini AI
+- Add automatic note generation from transcripts
+- Add S3 audio storage and management
+- Add VideoNotes and CourseContent database models
+- Add background video processing
+- Add frontend AI Notes component
 
 2. To do until next Scrum:
 
