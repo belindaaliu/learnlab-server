@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const crypto = require("crypto");
 const s3 = require("../lib/s3");
+const emailService = require("../services/emailService");
 
 // GET CURRENT USER (STUDENT OR INSTRUCTOR)
 const getProfile = async (req, res) => {
@@ -696,23 +697,69 @@ const sendMfaVerification = async (req, res) => {
       where: { id: req.user.userId },
     });
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    if (type === 'email') {
-      // Make sure emailService exists
-      if (emailService && emailService.sendMfaCode) {
-        await emailService.sendMfaCode(user.email, code);
-      } else {
-        console.log(`Email verification code for ${user.email}: ${code}`);
-      }
-    } else if (type === 'sms') {
-      console.log(`SMS code for ${phone}: ${code}`);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
     }
 
-    res.json({
-      success: true,
-      message: 'Verification code sent',
-    });
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Store code in memory (use Redis in production)
+    if (!global.mfaVerificationCodes) global.mfaVerificationCodes = {};
+    global.mfaVerificationCodes[`${req.user.userId}_${type}`] = {
+      code,
+      expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
+    };
+    
+    if (type === 'email') {
+      // Check if emailService exists and has sendMfaCode method
+      if (emailService && typeof emailService.sendMfaCode === 'function') {
+        try {
+          await emailService.sendMfaCode(user.email, code);
+          console.log(`Email MFA code sent to ${user.email}: ${code}`);
+        } catch (emailError) {
+          console.error('Email service error:', emailError);
+          // Still return success for development - just log the code
+          console.log(`[DEV] Email MFA code for ${user.email}: ${code}`);
+        }
+      } else {
+        // For development - just log the code
+        console.log(`[DEV] Email MFA code for ${user.email}: ${code}`);
+      }
+      
+      return res.json({
+        success: true,
+        message: 'Verification code sent to your email',
+        // Include code in development only (remove in production)
+        ...(process.env.NODE_ENV !== 'production' && { devCode: code })
+      });
+      
+    } else if (type === 'sms') {
+      if (!phone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Phone number is required for SMS MFA'
+        });
+      }
+      
+      console.log(`[DEV] SMS code for ${phone}: ${code}`);
+      
+      // Here you would implement actual SMS sending
+      // await smsService.sendSms(phone, `Your verification code is: ${code}`);
+      
+      res.json({
+        success: true,
+        message: 'Verification code sent to your phone',
+        ...(process.env.NODE_ENV !== 'production' && { devCode: code })
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid MFA type'
+      });
+    }
   } catch (error) {
     console.error('Error sending MFA verification:', error);
     res.status(500).json({
@@ -734,6 +781,55 @@ const verifyAndEnableMfa = async (req, res) => {
       });
     }
 
+    // For email and SMS, verify the code from temporary storage
+    if (type === 'email' || type === 'sms') {
+      const storedData = global.mfaVerificationCodes?.[`${req.user.userId}_${type}`];
+      
+      if (!storedData) {
+        return res.status(400).json({
+          success: false,
+          message: 'No verification code found. Please request a new one.',
+        });
+      }
+      
+      if (storedData.expiresAt < Date.now()) {
+        delete global.mfaVerificationCodes[`${req.user.userId}_${type}`];
+        return res.status(400).json({
+          success: false,
+          message: 'Code expired. Please request a new one.',
+        });
+      }
+      
+      if (storedData.code !== code) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid verification code',
+        });
+      }
+      
+      // Code is valid - clear it
+      delete global.mfaVerificationCodes[`${req.user.userId}_${type}`];
+    }
+
+    // For authenticator, verify using speakeasy
+    if (type === 'authenticator') {
+      const speakeasy = require('speakeasy');
+      const verified = speakeasy.totp.verify({
+        secret: secret,
+        encoding: 'base32',
+        token: code,
+        window: 1
+      });
+      
+      if (!verified) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid authenticator code',
+        });
+      }
+    }
+
+    // Check if MFA record exists
     const existingMfa = await prisma.multiFactorAuth.findFirst({
       where: {
         user_id: req.user.userId,
