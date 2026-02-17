@@ -10,7 +10,7 @@ const getCoursePlayerData = async (req, res) => {
     const courseId = Number(req.params.courseId);
     const userId = Number(req.user.userId);
 
-    // Fetch course info
+    // Fetch course info with all new fields
     const course = await prisma.courses.findUnique({
       where: { id: BigInt(courseId) },
       include: {
@@ -69,11 +69,14 @@ const getCoursePlayerData = async (req, res) => {
       },
     });
 
-    // Format response
+    // Format response with new fields
     const formatted = {
       id: Number(course.id),
       title: course.title,
       description: course.description,
+      long_description: course.long_description, // New field
+      requirements: course.requirements, // New field
+      target_audience: course.target_audience, // New field
       image: course.thumbnail_url,
       updated_at: course.updated_at,
       instructor: {
@@ -1055,6 +1058,40 @@ const getQuizInfo = async (req, res) => {
   }
 };
 
+// Get course progress for a user
+const getCourseProgress = async (req, res) => {
+  try {
+    const userId = Number(req.user.userId);
+    const courseId = Number(req.params.courseId);
+
+    const completedLessons = await prisma.lessonProgress.count({
+      where: {
+        user_id: BigInt(userId),
+        is_completed: true,
+        CourseContent: {
+          course_id: BigInt(courseId),
+          type: { not: "section" },
+        },
+      },
+    });
+
+    const totalLessons = await prisma.courseContent.count({
+      where: {
+        course_id: BigInt(courseId),
+        type: { not: "section" },
+      },
+    });
+
+    res.json({
+      completed_lessons: completedLessons,
+      total_lessons: totalLessons,
+    });
+  } catch (error) {
+    console.error("Error fetching course progress:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 module.exports = {
   getCoursePlayerData,
   getCourseLessons,
@@ -1070,4 +1107,5 @@ module.exports = {
   submitQuizAttempt,
   getQuizResults,
   getQuizInfo,
+  getCourseProgress
 };
