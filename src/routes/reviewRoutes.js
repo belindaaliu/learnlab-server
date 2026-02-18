@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware, optionalAuth } = require('../middleware/authMiddleware'); // Add optionalAuth
 const {
   createReview,
   updateReview,
@@ -9,8 +9,8 @@ const {
   getUserCourseReview
 } = require('../controllers/reviewController');
 
-// Public routes
-router.get('/courses/:courseId/reviews', getCourseReviews);
+// Public/Protected routes - use optionalAuth to get user if logged in
+router.get('/courses/:courseId/reviews', optionalAuth, getCourseReviews); // <-- Added optionalAuth
 
 // Protected routes
 router.post('/courses/:courseId/reviews', authMiddleware, createReview);
