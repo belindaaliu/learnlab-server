@@ -459,7 +459,7 @@ Ali
 - Updated Database Schema (is_preview) & Backend APIs for transactional Quiz updates.
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
@@ -510,13 +510,18 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Implemented Nested Lesson Structure (Video, Note, Quiz) within sections.
+- Integrated AWS S3 Video Upload with progress bar.
+- Built Quiz Manager & Note Editor modals in the frontend.
+- Updated Database Schema and Backend APIs for transactional Quiz updates.
 
 2. To do until next Scrum:
-
+- Complete Edit Course page with Curriculum Builder.
+- Implement Drag and Drop functionality to reorder lessons.
+- Work on Instructor Dashboard layout.
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
@@ -629,13 +634,17 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Making the course details page dynamic and fixing course editing problems.
+- Completed Edit Course page with Curriculum Builder and dynamic data.
+- Editing Instructor Dashboard.
+- Implemented persistent reordering for lessons by drag and drop.
 
 2. To do until next Scrum:
-
+- Implement tags for courses.
+- Build smart course preview logic for videos, notes, and quizzes.
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
@@ -690,13 +699,16 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Implemented tags for courses.
+- Developed smart course preview for video, notes, and quizzes with unlock logic.
+- Fixed conflict issues regarding curriculum content upload.
 
 2. To do until next Scrum:
-
+- Add a preview module to the lesson details.
+-Implement logic to add the duration of each video to the lesson details page.
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
@@ -747,13 +759,15 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Added a preview module.
+- Added the duration of each video to the lesson details page.
 
 2. To do until next Scrum:
-
+- Finalize making Course Details fully dynamic.
+- Update InstructorNavbar component.
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
@@ -807,10 +821,13 @@ subscription.
 Ali
 
 1. Done / not done since last scrum:
-
+- Updated InstructorNavbar.
+- Updated Course Details and made them fully dynamic.
 
 2. To do until next Scrum:
-
+- Update Course List URLs for searching and filtering.
+- Protect Course Details from review if the user was deleted.
+- Add UI Toasts for better user feedback.
 
 3. Need assistance / figure things out
 
@@ -967,13 +984,17 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Course list modification: Updated URLs for search and filter.
+- Protected the Course Details from Review if the user was deleted.
+- Implemented some UI updates (Toasts).
 
 2. To do until next Scrum:
-
+- Focus mostly on creating the PowerPoint presentation for the project.
+- Fix the Logout path routing.
+- Inject the video duration to the DB via EditCourse page.
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
@@ -1024,13 +1045,16 @@ Belinda
 Ali
 
 1. Done / not done since last scrum:
-
+- Worked mostly on the PowerPoint presentation for the project.
+- Edited the path of Logout.
+- Injected the video duration to the DB by EditCourse page.
 
 2. To do until next Scrum:
-
+- Final reviews, code cleanup, and bug fixes.
+- Continue practicing the presentation.
 
 3. Need assistance / figure things out
-
+N/A
 
 ---
 Aleks
