@@ -1011,10 +1011,11 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Fixed revenue in admin instructor's page.
+-fixed move to wishlist button in cart.
 
 2. To do until next Scrum:
-
+-Debugging
 
 3. Need assistance / figure things out
 
@@ -1062,7 +1063,7 @@ Samira
 Belinda
 
 1. Done / not done since last scrum:
-
+- Changed alerts to toast in admin subscription page.
 
 2. To do until next Scrum:
 

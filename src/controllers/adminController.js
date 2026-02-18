@@ -110,7 +110,6 @@ exports.getDashboardStats = async (req, res) => {
       }),
     ]);
 
-    // Serialized JSON
     res.json(
       serialize({
         metrics: {
